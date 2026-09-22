@@ -1,0 +1,38 @@
+[project]
+name = "chartremotely"
+version = "0.1.0"
+description = "Remote control of desktop charting applications on macOS"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "Lonnie VanZandt" }]
+keywords = ["thinkorswim", "accessibility", "automation", "charting"]
+
+# The resolver is pure stdlib and testable anywhere. The macOS driver needs
+# PyObjC, which is why it is an optional extra rather than a hard dependency:
+# CI must be able to run the logic tests on Linux.
+dependencies = []
+
+[project.optional-dependencies]
+macos = [
+  "pyobjc-framework-ApplicationServices>=10",
+  "pyobjc-framework-Cocoa>=10",
+  "pyobjc-framework-Quartz>=10",
+]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[project.scripts]
+chartremotely = "chartremotely.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["chartremotely*"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
