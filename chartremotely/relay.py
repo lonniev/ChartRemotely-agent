@@ -76,9 +76,13 @@ def pair(operator_url: str | None = None, on_code=print) -> dict:
     while time.time() < deadline:
         time.sleep(CLAIM_INTERVAL)
         try:
-            claimed = _post(f"{base}/agent/collect", {"code": code}, timeout=20)
-        except urllib.error.URLError:
-            continue          # transient; the code is still valid
+            claimed = _post(f"{base}/agent/collect", {"code": code}, timeout=45)
+        except (urllib.error.URLError, TimeoutError, OSError):
+            # A read timeout is TimeoutError, not URLError - catching only
+            # the latter turned a slow first response into a hard failure.
+            # The code stays valid, and collect is idempotent, so retrying
+            # is always safe.
+            continue
         if claimed.get("paired"):
             return config.update(operator_url=base,
                                  agent_id=claimed["agent_id"],
@@ -105,7 +109,7 @@ def run(operator_url: str | None = None, once: bool = False) -> None:
         try:
             envelope = _post(f"{base}/agent/poll", credentials, timeout=POLL_TIMEOUT)
             backoff = 1.0
-        except urllib.error.URLError:
+        except (urllib.error.URLError, TimeoutError, OSError):
             # The operator being unreachable is not fatal: this machine
             # still works locally, and the display should reconnect by
             # itself when the operator returns.
@@ -121,7 +125,7 @@ def run(operator_url: str | None = None, once: bool = False) -> None:
                 _post(f"{base}/agent/result",
                       {**credentials, "id": envelope.get("id"), "reply": reply},
                       timeout=20)
-            except urllib.error.URLError:
+            except (urllib.error.URLError, TimeoutError, OSError):
                 pass          # the caller has already timed out and refunded
         if once:
             return
