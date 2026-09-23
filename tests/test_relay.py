@@ -6,8 +6,8 @@ so CI can run it on Linux.
 
 import json
 import threading
-from typing import ClassVar
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from typing import ClassVar
 
 import pytest
 
