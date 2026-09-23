@@ -30,6 +30,10 @@ DEFAULTS: dict = {
     "row_height": "1.0",
     # The SEC wants a contactable address on registry requests.
     "contact": None,
+    # Set once the agent is adopted by an operator.
+    "operator_url": None,
+    "agent_id": None,
+    "agent_secret": None,
     "token": None,
     "port": 8899,
 }

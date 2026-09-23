@@ -32,6 +32,12 @@ def main(argv: list[str] | None = None) -> int:
     serve = sub.add_parser("serve", help="run the local listener")
     serve.add_argument("--port", type=int, default=None)
 
+    pair = sub.add_parser("pair", help="adopt this display to an operator")
+    pair.add_argument("--operator", default=None, help="operator base URL")
+
+    relay = sub.add_parser("relay", help="hold a connection open for the operator")
+    relay.add_argument("--operator", default=None)
+
     args = parser.parse_args(argv)
 
     # Imported lazily so `doctor` can explain a missing dependency rather
@@ -42,6 +48,20 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "token":
         from .config import ensure_token
         print(ensure_token())
+        return 0
+    if args.command == "pair":
+        from .relay import pair as do_pair
+        print("Give this code to your MCP client: ", end="", flush=True)
+        try:
+            do_pair(args.operator, on_code=lambda c: print(c, flush=True))
+        except Exception as exc:  # noqa: BLE001 - surface the reason plainly
+            print(f"pairing failed: {exc}")
+            return 2
+        print("paired")
+        return 0
+    if args.command == "relay":
+        from .relay import run
+        run(args.operator)
         return 0
     if args.command == "serve":
         from .server import serve as run
