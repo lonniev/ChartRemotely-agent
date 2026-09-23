@@ -28,6 +28,8 @@ DEFAULTS: dict = {
     # Row height should match the underlying's strike increment so volume
     # profile buckets land on tradable strikes.
     "row_height": "1.0",
+    # The SEC wants a contactable address on registry requests.
+    "contact": None,
     "token": None,
     "port": 8899,
 }

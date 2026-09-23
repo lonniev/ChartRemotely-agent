@@ -16,8 +16,18 @@ from .config import DATA_DIR
 SEC_URL = "https://www.sec.gov/files/company_tickers.json"
 CACHE = DATA_DIR / "tickers.json"
 MAX_AGE = 7 * 24 * 3600
-# The SEC asks for a contactable agent; anonymous requests get blocked.
-USER_AGENT = "ChartRemotely agent (https://github.com/lonniev/ChartRemotely-agent)"
+# The SEC requires a User-Agent carrying a contact address and answers 403
+# without one. A repository URL alone is not enough.
+DEFAULT_CONTACT = "chartremotely@example.com"
+
+
+def _user_agent() -> str:
+    from .config import load
+    contact = load().get("contact") or DEFAULT_CONTACT
+    # SEC's documented format is plain "Name email". Anything fancier is
+    # rejected: a User-Agent carrying a URL answers 403, as does one with no
+    # contact address at all.
+    return f"ChartRemotely {contact}"
 
 
 def _fresh() -> bool:
@@ -25,7 +35,7 @@ def _fresh() -> bool:
 
 
 def refresh() -> list[dict]:
-    request = urllib.request.Request(SEC_URL, headers={"User-Agent": USER_AGENT})
+    request = urllib.request.Request(SEC_URL, headers={"User-Agent": _user_agent()})
     with urllib.request.urlopen(request, timeout=20) as response:
         raw = json.load(response)
     rows = [{"t": v["ticker"], "n": v["title"], "r": rank}
