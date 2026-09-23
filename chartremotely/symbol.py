@@ -13,15 +13,10 @@ import time
 
 import Quartz
 
-from . import ax, config
+from . import ax, config, layout
 
 # Accepts tickers, futures (/ES), indices (.SPX) and share classes (BRK/B).
 TICKER = re.compile(r"^[./$]?[A-Z]{1,6}([/.][A-Z]{1,2})?(:[A-Z]+)?$")
-
-# Where to look when discovering the field: the chart toolbar band.
-SEARCH_X = range(380, 760, 8)
-SEARCH_Y = range(95, 210, 5)
-
 
 class NotFound(RuntimeError):
     """The symbol field could not be located or did not validate."""
@@ -53,19 +48,24 @@ def validate(element) -> tuple[bool, str]:
     return True, value.strip()
 
 
-def discover(ax_app) -> tuple[int, int] | None:
-    """Find the symbol field by sweeping the toolbar band.
+def discover(ax_app, window_prefix: str) -> tuple[int, int] | None:
+    """Find the symbol field without assuming where the chart is.
 
-    The chart's accessibility children are populated lazily, so a tree walk
-    never reaches this field; hit-testing does. Being able to find it
-    automatically is what removes the manual teach step.
+    Searches each pane the accessibility tree reports, relative to that
+    pane's own bounds. No screen coordinates are assumed, so a user whose
+    chart sits bottom-right - or who rearranges it at lunchtime - is found
+    the same way.
     """
-    for y in SEARCH_Y:
-        for x in SEARCH_X:
-            ok, _ = validate(ax.element_at(ax_app, x, y))
-            if ok:
-                return x, y
-    return None
+    return layout.find_in_panes(
+        ax_app, window_prefix, lambda el: validate(el)[0])
+
+
+def discover_all(ax_app, window_prefix: str) -> list[tuple[int, int]]:
+    """Every symbol field on screen, for layouts holding several charts."""
+    hits = []
+    for rect in layout.panes(ax_app, window_prefix):
+        hits += layout.scan_all(ax_app, rect, lambda el: validate(el)[0])
+    return hits
 
 
 def learn(app=None) -> dict:
@@ -74,7 +74,7 @@ def learn(app=None) -> dict:
     ax.activate(app)
     ax_app = ax.handle(app)
     cfg = config.load()
-    found = discover(ax_app)
+    found = discover(ax_app, cfg["window_prefix"])
     if found is None:
         raise NotFound("no symbol field found; is a chart visible?")
     win = ax.window(ax_app, cfg["window_prefix"])
@@ -108,7 +108,7 @@ def locate(ax_app, cfg: dict):
                 if ok:
                     return ax.element_at(ax_app, x + dx, y + dy), info
 
-    found = discover(ax_app)
+    found = discover(ax_app, cfg["window_prefix"])
     if found is None:
         raise NotFound("symbol field did not validate and could not be rediscovered")
     config.update(symbol_dx=int(found[0] - origin.x),

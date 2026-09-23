@@ -21,7 +21,7 @@ from __future__ import annotations
 import re
 import time
 
-from . import ax, config
+from . import ax, config, layout
 from .scales import AS_IS, MNEMONIC, canon, to_code
 
 ITEM = re.compile(r"^\s*\d+\s*[DYW]\s*:\s*\S+", re.IGNORECASE)
@@ -30,36 +30,34 @@ class MenuError(RuntimeError):
     """The aggregation menu could not be opened or read."""
 
 
-def discover(ax_app) -> tuple[int, int] | None:
-    """Find the aggregation toggle by its neighbours.
+def _is_style_control(element) -> bool:
+    if element is None or ax.attr(element, "AXRole") != "AXCheckBox":
+        return False
+    label = ax.attr(element, "AXTitle") or ax.attr(element, "AXDescription")
+    return label == "Style"
 
-    The control carries no label, but "Style", "Drawings", "Studies" and
-    "Patterns" sit beside it and do. The toggle is the unlabelled check box
-    immediately left of Style, so anchor on Style rather than on a fixed
-    coordinate that a layout change would invalidate.
+
+def discover(ax_app, window_prefix: str) -> tuple[int, int] | None:
+    """Find the aggregation toggle by its labelled neighbour.
+
+    The toggle carries no label, but "Style" sits immediately right of it
+    and does. Anchoring on a named control rather than a coordinate is what
+    survives a different layout: find Style wherever it is, then step left.
     """
-    style = None
-    for y in (120, 130, 140):
-        for x in range(1400, 1920, 6):
-            element = ax.element_at(ax_app, x, y)
-            if element is None or ax.attr(element, "AXRole") != "AXCheckBox":
-                continue
-            label = ax.attr(element, "AXTitle") or ax.attr(element, "AXDescription")
-            if label == "Style":
-                style = ax.position(element)
-                break
-        if style:
-            break
+    style = layout.find_in_panes(ax_app, window_prefix, _is_style_control)
     if style is None:
         return None
-    # Step left from Style until an unlabelled, pressable check box appears.
-    for dx in range(10, 140, 4):
-        x, y = int(style.x) - dx, int(style.y) + 12
-        element = ax.element_at(ax_app, x, y)
-        if element is None or ax.attr(element, "AXRole") != "AXCheckBox":
+    element = ax.element_at(ax_app, *style)
+    origin = ax.position(element)
+    if origin is None:
+        return None
+    for dx in range(10, 160, 4):
+        x, y = int(origin.x) - dx, int(origin.y) + 12
+        candidate = ax.element_at(ax_app, x, y)
+        if candidate is None or ax.attr(candidate, "AXRole") != "AXCheckBox":
             continue
-        label = ax.attr(element, "AXTitle") or ax.attr(element, "AXDescription")
-        if not label and "AXPress" in ax.actions(element):
+        label = ax.attr(candidate, "AXTitle") or ax.attr(candidate, "AXDescription")
+        if not label and "AXPress" in ax.actions(candidate):
             return x, y
     return None
 
@@ -69,7 +67,7 @@ def learn(app=None) -> dict:
     ax.activate(app)
     ax_app = ax.handle(app)
     cfg = config.load()
-    found = discover(ax_app)
+    found = discover(ax_app, cfg["window_prefix"])
     if found is None:
         raise MenuError("aggregation control not found; is a chart visible?")
     win = ax.window(ax_app, cfg["window_prefix"])
