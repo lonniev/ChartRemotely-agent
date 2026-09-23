@@ -25,6 +25,10 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("doctor", help="check everything this agent needs")
     sub.add_parser("token", help="print the agent's access token")
 
+    setup = sub.add_parser("studies", help="rebuild the chart's study set")
+    setup.add_argument("--row-height", default=None,
+                       help="profile row height; match the strike increment (1.0, 2.5)")
+
     serve = sub.add_parser("serve", help="run the local listener")
     serve.add_argument("--port", type=int, default=None)
 
@@ -64,6 +68,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "scales":
         for label in timeframe.presets():
             print(" ", label)
+        return 0
+    if args.command == "studies":
+        from . import studies
+        for line in studies.setup(args.row_height):
+            print(" ", line)
         return 0
     if args.command == "learn":
         symbol.learn()

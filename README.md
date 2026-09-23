@@ -43,6 +43,29 @@ Every case in [`tests/test_resolve.py`](tests/test_resolve.py) is a real
 transcript or a real failure. The suite asserts what must resolve *and* what
 must be refused; loosening a threshold to fix a miss usually breaks a refusal.
 
+## Commands
+
+```
+chartremotely show palantir --scale scalp   put a security on the chart
+chartremotely show "john deere"             spoken names resolve to tickers
+chartremotely scale half                    change the aggregation
+chartremotely read                          report symbol and scale
+chartremotely scales                        list the time frames on offer
+chartremotely studies --row-height 2.5      rebuild the study set
+chartremotely learn                         rediscover the chart's controls
+chartremotely serve                         run the local listener
+chartremotely doctor                        check everything the agent needs
+```
+
+Time frames are spoken as mnemonics chosen for phonetic distance, because
+digits are the worst thing to say to a recogniser - "fifteen" and "fifty"
+collide, and so do "one" and "won":
+
+| | | | | |
+|---|---|---|---|---|
+| minute | scalp | quarter | half | hourly |
+| swing | daily | weekly | ticks | micro |
+
 ## Install
 
 ```bash
@@ -57,6 +80,24 @@ thinkorswim, a resolvable symbol field, a listening agent.
 Accessibility permission in System Settings → Privacy & Security →
 Accessibility. That is the point of the protection, and no installer can or
 should bypass it.
+
+## How it finds anything
+
+Nothing is anchored to screen coordinates. thinkorswim layouts differ per
+user and change through the day, so a fixed region works on one machine and
+nowhere else.
+
+Structural discovery is not available either: the chart's controls cannot be
+reached through `AXChildren`. The combo box holding the symbol reports the
+window as its parent, yet the window does not list it as a child - the link
+exists upward but not downward. A full walk of 2,500 elements finds the news
+panel's symbol box and never the chart's.
+
+What the tree *does* expose reliably is the container layout. So the agent
+asks the tree where the panes are and hit-tests relative to each pane's own
+bounds, validating a candidate before acting on it. The aggregation control
+anchors on the labelled "Style" button beside it. Move the chart, resize it,
+switch to a grid - discovery follows, and takes about a second.
 
 ## Status
 
