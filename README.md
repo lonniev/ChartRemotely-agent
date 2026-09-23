@@ -54,8 +54,53 @@ chartremotely scales                        list the time frames on offer
 chartremotely studies --row-height 2.5      rebuild the study set
 chartremotely learn                         rediscover the chart's controls
 chartremotely serve                         run the local listener
+chartremotely pair                          adopt this display to an operator
+chartremotely relay                         hold a connection open for the operator
 chartremotely doctor                        check everything the agent needs
 ```
+
+`serve` and `relay` are two different transports and most setups want both.
+`serve` listens on the local network, which is what an Apple Shortcut on the
+same tailnet talks to. `relay` dials *out* to the operator and holds the
+connection open, which is the only way a command from the other side of the
+world reaches this machine - no inbound port, no router to open, no
+certificate to keep alive. Pairing alone does not start it: a display that is
+paired but has no `relay` running reports `connected: false` and silently
+ignores everything sent to it.
+
+## Running it as a service
+
+Both transports are long-lived, so run them under `launchd` rather than a
+terminal. Two services rather than one, so a relay that loses the network
+cannot take the local listener down with it:
+
+```bash
+for cmd in serve relay; do
+  cat > ~/Library/LaunchAgents/com.chartremotely.$cmd.plist <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.chartremotely.$cmd</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>$(command -v chartremotely)</string>
+    <string>$cmd</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>10</integer>
+  <key>StandardOutPath</key><string>/tmp/chartremotely-$cmd.log</string>
+  <key>StandardErrorPath</key><string>/tmp/chartremotely-$cmd.err</string>
+</dict>
+</plist>
+PLIST
+  launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.chartremotely.$cmd.plist
+done
+```
+
+Pair first - `relay` needs the credentials `pair` stores before it has
+anything to dial with.
 
 Time frames are spoken as mnemonics chosen for phonetic distance, because
 digits are the worst thing to say to a recogniser - "fifteen" and "fifty"
