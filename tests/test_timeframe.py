@@ -2,7 +2,7 @@
 
 import pytest
 
-from chartremotely.timeframe import canon, mnemonic_for, to_code
+from chartremotely.scales import canon, mnemonic_for, to_code
 
 
 @pytest.mark.parametrize("said,code", [
