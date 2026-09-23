@@ -100,7 +100,7 @@ def test_a_relayed_command_is_dispatched_and_answered(operator, monkeypatch):
     relay.pair(operator, on_code=lambda c: None)
     StubOperator.commands.append({"id": "r1", "command": "read"})
     # The vocabulary is the agent's own; stub it so no GUI is required.
-    monkeypatch.setattr(relay, "dispatch", lambda cmd: f"dispatched:{cmd}")
+    monkeypatch.setattr(relay, "execute", lambda cmd: f"dispatched:{cmd}")
     relay.run(once=True)
     assert StubOperator.results == [
         {"agent_id": "a1", "secret": "s1", "id": "r1", "reply": "dispatched:read"}]
@@ -109,7 +109,7 @@ def test_a_relayed_command_is_dispatched_and_answered(operator, monkeypatch):
 def test_an_idle_poll_reports_nothing(operator, monkeypatch):
     StubOperator.claimed = True
     relay.pair(operator, on_code=lambda c: None)
-    monkeypatch.setattr(relay, "dispatch", lambda cmd: "should not be called")
+    monkeypatch.setattr(relay, "execute", lambda cmd: "should not be called")
     relay.run(once=True)
     assert StubOperator.results == []
 
@@ -128,3 +128,29 @@ def test_an_unreachable_operator_is_survivable(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "CONFIG_PATH", tmp_path / "config.json")
     config.update(operator_url="http://127.0.0.1:1", agent_id="a1", agent_secret="s1")
     relay.run(once=True)   # returns rather than raising
+
+
+def test_the_wire_logic_imports_without_the_macos_drivers():
+    """A guard, because this boundary has been broken twice.
+
+    relay, resolve and scales must stay importable where PyObjC is absent -
+    that is what lets CI run the logic on Linux. Importing vocab at module
+    scope in relay silently breaks it, and the failure only shows up in CI.
+    """
+    import ast
+    from pathlib import Path
+
+    forbidden = {"Quartz", "AppKit", "ApplicationServices", "CoreFoundation"}
+    for name in ("relay", "resolve", "scales", "config", "registry"):
+        tree = ast.parse(Path(f"chartremotely/{name}.py").read_text())
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                names = {a.name.split(".")[0] for a in node.names}
+            elif isinstance(node, ast.ImportFrom) and node.level == 0:
+                names = {(node.module or "").split(".")[0]}
+            else:
+                continue
+            # Only module-scope imports matter; lazy ones inside functions
+            # are the sanctioned escape hatch.
+            if node.col_offset == 0:
+                assert not (names & forbidden), f"{name}.py imports {names & forbidden} at module scope"

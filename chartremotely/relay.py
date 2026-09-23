@@ -19,7 +19,6 @@ import urllib.error
 import urllib.request
 
 from . import config
-from .vocab import dispatch
 
 #: Poll window. The operator holds a request open for slightly less than
 #: this, so a timeout here means the network dropped it, not that the
@@ -31,6 +30,18 @@ BACKOFF_MAX = 60.0
 
 class PairingError(RuntimeError):
     """Pairing could not be completed."""
+
+
+def execute(command: str) -> str:
+    """Hand a relayed command to the agent's own vocabulary.
+
+    Imported lazily and wrapped here for one reason: the wire logic in this
+    module is pure, and importing vocab at module scope would drag the macOS
+    drivers in with it - making the whole file unimportable anywhere the
+    drivers are not installed, CI included.
+    """
+    from .vocab import dispatch
+    return dispatch(command)
 
 
 def _post(url: str, payload: dict, timeout: float) -> dict:
@@ -105,7 +116,7 @@ def run(operator_url: str | None = None, once: bool = False) -> None:
             continue
 
         if envelope.get("command"):
-            reply = dispatch(str(envelope["command"]))
+            reply = execute(str(envelope["command"]))
             try:
                 _post(f"{base}/agent/result",
                       {**credentials, "id": envelope.get("id"), "reply": reply},
