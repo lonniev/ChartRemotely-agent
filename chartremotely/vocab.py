@@ -16,7 +16,7 @@ Two rules the callers depend on:
 
 from __future__ import annotations
 
-from . import registry, resolve, scales, symbol, timeframe, window
+from . import registry, resolve, scales, snapshot, symbol, timeframe, window
 
 ERR = "ERR "
 
@@ -94,6 +94,14 @@ def cmd_read() -> str:
         return ERR + _short(exc)
 
 
+def cmd_snapshot() -> str:
+    """A picture of the chart window, so a caller far away can see it."""
+    try:
+        return snapshot.as_reply(snapshot.shrink(window.capture()))
+    except Exception as exc:
+        return ERR + _short(exc)
+
+
 def dispatch(request: str) -> str:
     """Route one request. Anything unrecognised is treated as a company name.
 
@@ -103,6 +111,7 @@ def dispatch(request: str) -> str:
         scale   <spoken time frame>        -> mnemonic | ERR
         set     <TICKER> | <time frame>    -> spoken summary
         read                               -> current symbol and scale
+        snapshot                           -> data:image/jpeg;base64,... | ERR
         <spoken name>                      -> resolve, then set
     """
     request = (request or "").strip()
@@ -118,6 +127,8 @@ def dispatch(request: str) -> str:
         return cmd_scale(rest)
     if verb == "read":
         return cmd_read()
+    if verb == "snapshot":
+        return cmd_snapshot()
     if verb == "set":
         ticker, sep, scale = rest.partition("|")
         return cmd_set(ticker, scale if sep else "")

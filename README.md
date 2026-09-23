@@ -25,6 +25,7 @@ The command vocabulary is closed, and it is one short file: [`vocab.py`](chartre
 | `show <name or ticker>` | Change the chart's symbol |
 | `scale <mnemonic>` | Change the chart's aggregation |
 | `read` | Report POC / value area |
+| `snapshot` | Return a small JPEG of the chart window, so you can see it from afar |
 
 There is no command that opens an order ticket, submits a trade, moves money,
 or reads account balances. Adding one would mean editing that file, in public,

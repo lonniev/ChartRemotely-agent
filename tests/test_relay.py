@@ -141,7 +141,7 @@ def test_the_wire_logic_imports_without_the_macos_drivers():
     from pathlib import Path
 
     forbidden = {"Quartz", "AppKit", "ApplicationServices", "CoreFoundation"}
-    for name in ("relay", "resolve", "scales", "config", "registry"):
+    for name in ("relay", "resolve", "scales", "config", "registry", "snapshot"):
         tree = ast.parse(Path(f"chartremotely/{name}.py").read_text())
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
