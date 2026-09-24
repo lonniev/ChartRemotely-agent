@@ -1,11 +1,11 @@
 """Send a spoken command on to another of the owner's displays.
 
 The Shortcut asks "Where?" and passes the dictated answer through verbatim.
-Empty, or this Mac's own name, means this Mac. Any other name goes to the
-operator's ``/agent/forward``, which looks it up among the SAME owner's
-displays by name only and relays the command there; the target's reply is
-what gets spoken. No inference here and none at the operator: the name is
-compared ignoring case, spaces, hyphens, underscores and dots, and that is all.
+Empty, or this Mac's exact agent_id, means this Mac. Any other name goes to
+the operator's ``/agent/forward``, which is the one place names are matched:
+it finds the display among the SAME owner's displays (loosely - "mini mac"
+finds "Mac mini") and relays the command there, or answers that the name is
+this Mac's own. The target's reply is what gets spoken.
 
 Stdlib only, like the relay, so it imports where the macOS drivers do not.
 """
@@ -13,7 +13,6 @@ Stdlib only, like the relay, so it imports where the macOS drivers do not.
 from __future__ import annotations
 
 import json
-import re
 import urllib.error
 import urllib.request
 
@@ -23,21 +22,10 @@ ERR = "ERR "
 #: Longer than the operator's own wait on the target, so its 504 arrives first.
 TIMEOUT = 35.0
 
-_NAME_NOISE = re.compile(r"[\s\-_.]+")
-
-
-def display_key(name: str) -> str:
-    """A display name as it is matched. The operator's ``display_key``, exactly."""
-    return _NAME_NOISE.sub("", name or "").lower()
-
-
 def is_here(where: str, cfg: dict) -> bool:
-    """Whether ``where`` means this Mac: empty, its display name, or its agent_id."""
+    """Whether ``where`` means this Mac without asking: empty, or exactly its agent_id."""
     wanted = (where or "").strip()
-    if not wanted:
-        return True
-    label = cfg.get("display_label") or ""
-    return wanted == cfg.get("agent_id") or bool(label) and display_key(wanted) == display_key(label)
+    return not wanted or wanted == cfg.get("agent_id")
 
 
 def _post(url: str, payload: dict) -> tuple[int, dict]:
@@ -77,9 +65,6 @@ def route(command: str, where: str, cfg: dict | None = None) -> str | None:
     except (urllib.error.URLError, TimeoutError, OSError):
         return ERR + "I could not reach the operator."
     if status == 200 and body.get("self"):
-        # Told its own name: remember it, so next time needs no round trip.
-        if body.get("display"):
-            config.update(display_label=str(body["display"]))
         return None
     if status == 200:
         return str(body.get("reply") or "")

@@ -252,7 +252,6 @@ def test_a_made_key_never_reaches_the_agents_config(monkeypatch, tmp_path):
     stored = (tmp_path / "config.json").read_text()
     assert NSEC not in stored and "proof-for" not in stored
     assert json.loads(stored)["agent_id"] == "a1"
-    assert json.loads(stored)["display_label"] == "Desk", "so \"Where? Desk\" stays on this Mac"
     assert kept == [NPUB], "the made key is handed to the human's Keychain"
     assert built == ["https://mac.example.ts.net/chart"]
     assert not any(NSEC in s for s in said), "the key is never printed"

@@ -157,8 +157,6 @@ def run(ask: Ask = input, say: Say = print, operator_url: str = OPERATOR_URL) ->
         label = ask("Name this display (e.g. Desk, Office wall): ").strip() or "display"
         pair(client, base, npub, proof, label)
         del proof
-        # Kept so "Where? <this Mac's name>" runs here without asking the operator.
-        config.update(display_label=label)
         say(f"Paired as “{label}”.")
 
     # 3. Tailscale.

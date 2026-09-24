@@ -17,7 +17,7 @@ import secrets
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-from . import config, forward, push
+from . import config, forward, push, requestlog
 from .vocab import answer
 
 
@@ -72,13 +72,18 @@ class Handler(BaseHTTPRequestHandler):
         """
         elsewhere = forward.route(request, where) if where and request else None
         if elsewhere is not None:
-            return self._reply(200, elsewhere)
+            self._reply(200, elsewhere)
+            return requestlog.request("serve", request, where, elsewhere)
         result = answer(request)
         self._reply(200, result.reply)
+        requestlog.request("serve", request, where, result.reply)
         push.after_reply(request, result.reply, result.symbol)
 
     def log_message(self, *args) -> None:
-        """Silence. Requests carry spoken input; do not write it to a log."""
+        """Silence the stock access log: its request line can carry ``?t=<token>``.
+
+        Each handled command is logged by :mod:`requestlog` instead, verb only.
+        """
 
 
 def serve(port: int | None = None) -> None:
