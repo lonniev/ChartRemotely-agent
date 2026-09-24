@@ -1,6 +1,6 @@
 [project]
 name = "chartremotely"
-version = "0.1.0"
+version = "0.2.0"
 description = "Remote control of desktop charting applications on macOS"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -18,7 +18,11 @@ macos = [
   "pyobjc-framework-ApplicationServices>=10",
   "pyobjc-framework-Cocoa>=10",
   "pyobjc-framework-Quartz>=10",
+  "pyobjc-framework-Security>=10",
 ]
+# `chartremotely setup` makes and proves Nostr identities. The key and proof
+# code is the tollbooth-dpyc SDK's own, never rewritten here.
+setup = ["tollbooth-dpyc[nostr]==0.90.0"]
 dev = ["pytest>=8", "ruff>=0.6"]
 
 [project.scripts]
@@ -30,6 +34,9 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 include = ["chartremotely*"]
+
+[tool.setuptools.package-data]
+chartremotely = ["assets/*.plist"]
 
 [tool.ruff]
 line-length = 100
