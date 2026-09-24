@@ -67,15 +67,29 @@ def listener(operator, monkeypatch):
     from chartremotely import push
     monkeypatch.setattr(push, "after_reply", lambda *a: pictures.append(a))
     server.Handler.token = "T0KEN"
-    http = HTTPServer(("127.0.0.1", 0), server.Handler)
+    handled = threading.Event()
+
+    class Finishing(server.Handler):
+        # The reply goes out before the picture is scheduled, so a test that
+        # checks pictures must wait for the whole request, not just its reply.
+        def handle(self):
+            try:
+                super().handle()
+            finally:
+                handled.set()
+
+    http = HTTPServer(("127.0.0.1", 0), Finishing)
     threading.Thread(target=http.serve_forever, daemon=True).start()
 
     def post(body):
+        handled.clear()
         request = urllib.request.Request(
             f"http://127.0.0.1:{http.server_address[1]}/chart", data=json.dumps(body).encode(),
             method="POST", headers={"Content-Type": "application/json", "X-Token": "T0KEN"})
         with urllib.request.urlopen(request, timeout=10) as response:
-            return response.read().decode().strip()
+            reply = response.read().decode().strip()
+        assert handled.wait(5), "the listener never finished the request"
+        return reply
 
     yield post, ran, pictures
     http.shutdown()
