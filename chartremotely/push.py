@@ -1,15 +1,24 @@
 """Tell the operator what the chart looks like after it changes.
 
 A chart changed by voice goes straight to this machine over the tailnet, so
-the operator never hears of it. Right after a change succeeds, one picture of
-the chart pane is pushed up so the patron's browser can offer it. The operator
-keeps only the newest, encrypted, for an hour.
+the operator never hears of it. Once a change is answered — after the reply
+("… Good luck.") has been sent — one picture of the chart pane is pushed up so
+the patron's browser can offer it. The operator keeps only the newest,
+encrypted, for an hour.
 
-Off the voice path on purpose: the push runs in the background after the
-answer is already on its way, and any failure is swallowed. The chart has
-already changed; a missing picture must never turn into a spoken error.
+Three rules keep it out of the way:
 
-Stdlib only at module scope, like the relay: the capture is imported lazily.
+* **After the reply.** The listener and the relay schedule the picture only
+  once their reply has gone out, so it never delays or races the answer.
+* **Coalesced.** Changes in quick succession produce one picture, taken when
+  the chart has been quiet for QUIET_SECONDS — never a trail of in-between
+  captures.
+* **Serialised.** The capture holds the same cross-process lock as every
+  command that drives the chart (guilock), so it never overlaps one.
+
+Any failure is swallowed: the chart already changed, and a missing picture
+must never become a spoken error. Stdlib only at module scope, like the relay;
+the capture is imported lazily.
 """
 
 from __future__ import annotations
@@ -17,12 +26,25 @@ from __future__ import annotations
 import threading
 import time
 
-from . import config, relay
+from . import config, guilock, relay
 
-#: Time for the chart to redraw before its picture is taken.
-SETTLE_SECONDS = 1.0
+#: How long the chart must go unchanged before its picture is taken.
+QUIET_SECONDS = 1.5
 
-_lock = threading.Lock()
+#: Verbs that read or picture the chart, or only resolve words: they change
+#: nothing, so no picture follows them. Every other request — `set`, or a bare
+#: company name — changes the chart (see vocab.dispatch).
+_NOT_A_CHANGE = frozenset({"resolve", "scale", "read", "snapshot"})
+
+_state = threading.Condition()
+_due: float | None = None
+_worker: threading.Thread | None = None
+
+
+def changes_chart(request: str, reply: str) -> bool:
+    """Whether this answered request changed what the chart shows."""
+    verb = (request or "").strip().partition(" ")[0].lower()
+    return bool(verb) and verb not in _NOT_A_CHANGE and not reply.startswith("ERR")
 
 
 def payload(cfg: dict, image: str) -> tuple[str, dict] | None:
@@ -34,11 +56,33 @@ def payload(cfg: dict, image: str) -> tuple[str, dict] | None:
     return f"{base}/agent/snapshot", {"agent_id": agent_id, "secret": secret, "image": image}
 
 
-def after_change(reply: str) -> str:
-    """Start a picture push if the change worked. Returns the reply unchanged."""
-    if not reply.startswith("ERR"):
-        threading.Thread(target=push_now, name="push-latest", daemon=True).start()
-    return reply
+def after_reply(request: str, reply: str) -> None:
+    """Call once a reply has been sent. Schedules a picture if the chart changed."""
+    if changes_chart(request, reply):
+        schedule()
+
+
+def schedule() -> None:
+    """Ask for one picture once the chart has been quiet; later asks push it back."""
+    global _due, _worker
+    with _state:
+        _due = time.monotonic() + QUIET_SECONDS
+        if _worker is None or not _worker.is_alive():
+            _worker = threading.Thread(target=_wait_then_push, name="push-latest", daemon=True)
+            _worker.start()
+        _state.notify_all()
+
+
+def _wait_then_push() -> None:
+    global _due
+    with _state:
+        while True:
+            remaining = (_due or 0) - time.monotonic()
+            if remaining <= 0:
+                _due = None
+                break
+            _state.wait(remaining)
+    push_now()
 
 
 def push_now() -> None:
@@ -47,12 +91,10 @@ def push_now() -> None:
         cfg = config.load()
         if payload(cfg, "") is None:
             return
-        # One at a time: two quick changes should not capture over each other.
-        with _lock:
-            time.sleep(SETTLE_SECONDS)
-            from . import snapshot, window
+        from . import snapshot, window
+        with guilock.driving():
             image = snapshot.as_reply(snapshot.shrink(window.capture()))
-            url, body = payload(cfg, image)
-            relay._post(url, body, timeout=30)
+        url, body = payload(cfg, image)
+        relay._post(url, body, timeout=30)
     except Exception:  # noqa: BLE001, S110 - deliberate: see the module docstring
         pass
