@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- "Where?" names are matched only by the operator, which now matches loosely ("mini mac", "mini" and "mack meeny" find "Mac mini"; needs ChartRemotely-mcp with loose display names). This Mac runs a command without asking only when "Where?" is blank or exactly its agent_id; any name, its own included, goes to the operator, which answers `self` when the name is this Mac's. The local name check and its copy of the operator's `display_key` are gone, as is `display_label` in the config - no pairing ever wrote it on a Mac set up before it, so every name was being forwarded anyway.
+
+### Added
+- The listener and the relay log one line per command to stderr (launchd's `~/Library/Logs/chartremotely-serve.log` / `-relay.log`): time, verb (first word only), "Where?" as said (64 chars), and the reply when it is an ERR (200 chars). A spoken ERR can now be diagnosed. Never the X-Token, a secret or a picture; the stock access log stays off, as its request line can carry the token.
+
 ### Fixed
 - Re-running `chartremotely setup` on a Mac whose services are running no longer stops with "Bootstrap failed: 5: Input/output error" and the listener left down: it waits for launchd to let go of the old service, retries while launchd settles, and otherwise stops with launchd's own reason.
 

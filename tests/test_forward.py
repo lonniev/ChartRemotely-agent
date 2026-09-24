@@ -50,7 +50,7 @@ def operator(monkeypatch, tmp_path):
     server = HTTPServer(("127.0.0.1", 0), StubOperator)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     base = f"http://127.0.0.1:{server.server_address[1]}"
-    config.update(operator_url=base, agent_id="a1", agent_secret="s1", display_label="Desk")
+    config.update(operator_url=base, agent_id="a1", agent_secret="s1")
     yield base
     server.shutdown()
 
@@ -90,11 +90,41 @@ def test_no_where_runs_here_exactly_as_before(listener):
     assert StubOperator.seen == []
 
 
-@pytest.mark.parametrize("said", ["Desk", "desk", " DESK ", "a1"])
-def test_this_macs_own_name_runs_here(listener, said):
+@pytest.mark.parametrize("said", ["", "  ", "a1", " a1 "])
+def test_blank_or_this_macs_agent_id_runs_here_without_asking(listener, said):
     post, ran, _ = listener
     post({"cmd": "set PLTR | daily", "where": said})
     assert ran == ["set PLTR | daily"] and StubOperator.seen == []
+
+
+@pytest.mark.parametrize("said", ["Desk", "desk", "mini mac", "A1"])
+def test_every_name_is_matched_by_the_operator_not_here(listener, said):
+    post, ran, _ = listener
+    StubOperator.answer = (200, {"self": True, "display": "Desk"})
+    post({"cmd": "set PLTR | daily", "where": said})
+    assert [body["display"] for _, body in StubOperator.seen] == [said.strip()]
+    assert ran == ["set PLTR | daily"], "the operator said it is this Mac, so it runs here"
+
+
+def test_is_here_is_blank_or_the_exact_agent_id():
+    cfg = {"agent_id": "a1"}
+    assert forward.is_here("", cfg) and forward.is_here(" a1 ", cfg)
+    assert not forward.is_here("A1", cfg) and not forward.is_here("Desk", cfg)
+    assert forward.is_here("", {}) and not forward.is_here("a1", {})
+
+
+def test_each_request_is_logged_once_without_the_token_or_arguments(listener, capsys):
+    post, _, _ = listener
+    capsys.readouterr()
+    post({"cmd": "set PLTR | daily", "where": "desk"})
+    StubOperator.answer = (404, {"error": "no display named 'kitchen'", "displays": ["Desk"]})
+    post({"cmd": "read", "where": "kitchen"})
+    lines = capsys.readouterr().err.strip().splitlines()
+    assert len(lines) == 2
+    assert "serve verb=set where='desk'" in lines[0] and "reply=" not in lines[0]
+    assert "verb=read where='kitchen' reply='ERR No display named \"kitchen\". Yours: Desk.'" in lines[1]
+    for line in lines:
+        assert "T0KEN" not in line and "s1" not in line and "PLTR" not in line
 
 
 def test_another_name_is_forwarded_verbatim_and_its_reply_spoken(listener):
@@ -113,11 +143,9 @@ def test_an_unknown_name_is_spoken_back_with_the_owners_names(listener):
 
 # -- forward.route -----------------------------------------------------------------
 
-def test_the_operator_saying_self_runs_here_and_remembers_the_name(operator):
-    config.update(display_label=None)
+def test_the_operator_saying_self_runs_here(operator):
     StubOperator.answer = (200, {"self": True, "display": "Desk"})
     assert forward.route("read", "desk") is None
-    assert config.load()["display_label"] == "Desk"
 
 
 def test_an_offline_display_is_said_plainly(operator):
@@ -134,11 +162,6 @@ def test_an_unpaired_mac_can_only_drive_itself(operator):
 def test_an_unreachable_operator_is_an_error_not_an_exception(operator):
     config.update(operator_url="http://127.0.0.1:1")
     assert forward.route("read", "attic") == "ERR I could not reach the operator."
-
-
-@pytest.mark.parametrize("said", ["Mac mini", "mac-mini", "macmini", "MAC_MINI", "mac.mini"])
-def test_the_name_rule_is_the_operators(said):
-    assert forward.display_key(said) == "macmini"
 
 
 # -- the Shortcut ------------------------------------------------------------------

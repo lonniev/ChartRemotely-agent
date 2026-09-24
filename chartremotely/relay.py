@@ -18,7 +18,7 @@ import time
 import urllib.error
 import urllib.request
 
-from . import config
+from . import config, requestlog
 from .answer import Answer
 
 #: Poll window. The operator holds a request open for slightly less than
@@ -144,6 +144,7 @@ def run(operator_url: str | None = None, once: bool = False) -> None:
                       timeout=20)
             except (urllib.error.URLError, TimeoutError, OSError):
                 pass          # the caller has already timed out and refunded
+            requestlog.request("relay", command, "", reply)
             # After the reply, never before: the picture of a changed chart.
             from . import push
             push.after_reply(command, reply, result.symbol)

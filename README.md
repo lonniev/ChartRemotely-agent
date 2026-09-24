@@ -95,15 +95,20 @@ ignores everything sent to it.
 
 1. **Which company?** — a spoken name or a spelled ticker.
 2. **What scale?** — a time frame mnemonic (below), or "as is".
-3. **Where?** — which display, by the name it was paired under. Say this
-   Mac's own name to stay here.
+3. **Where?** — which display. Leave it blank to stay on this Mac.
 
-The Shortcut talks to one Mac — the one that made it. When "Where?" names
-another of your displays, that Mac hands the command to the operator, which
-finds the display among yours by name only (case, spaces, hyphens,
-underscores and dots do not count: "Mac mini" is "mac-mini") and relays it.
-The reply you hear is the other display's. An unknown name is answered with
-the names you do have.
+The Shortcut talks to one Mac — the one that made it. Any name said at
+"Where?" goes to the operator, which finds the display among yours and
+relays the command there (or back here, if the name is this Mac's). Names
+may be loose: for a display paired as "Mac mini", "mac-mini", "mini mac",
+"mini", "macm" and even "mack meeny" all work. The reply you hear is that
+display's. A name that could mean several displays is answered with them,
+and an unknown name with the names you do have.
+
+Each command handled is logged as one line — time, the command's first word,
+the "Where?" as said, and the reply if it was an ERR — to
+`~/Library/Logs/chartremotely-serve.log` (voice) or `chartremotely-relay.log`
+(from the operator). Never a token, a secret or a picture.
 
 ## Running it as a service
 
