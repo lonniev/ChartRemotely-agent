@@ -38,6 +38,12 @@ def main(argv: list[str] | None = None) -> int:
     relay = sub.add_parser("relay", help="hold a connection open for the operator")
     relay.add_argument("--operator", default=None)
 
+    sub.add_parser("setup", help="pair this Mac and make its voice Shortcut, step by step")
+
+    perms = sub.add_parser("permissions", help="report (or request) Accessibility and Screen Recording")
+    perms.add_argument("--request", action="store_true", help="ask macOS to prompt for them")
+    perms.add_argument("--out", default=None, help="write the answer as JSON to this file")
+
     args = parser.parse_args(argv)
 
     # Imported lazily so `doctor` can explain a missing dependency rather
@@ -58,6 +64,25 @@ def main(argv: list[str] | None = None) -> int:
             print(f"pairing failed: {exc}")
             return 2
         print("paired")
+        return 0
+    if args.command == "setup":
+        from .setup import SetupError
+        from .setup import run as run_setup
+        try:
+            return run_setup()
+        except (SetupError, RuntimeError, OSError) as exc:
+            print(f"setup stopped: {exc}")
+            print("Fix that, then run `chartremotely setup` again; finished steps are skipped.")
+            return 2
+    if args.command == "permissions":
+        import json
+        from pathlib import Path
+
+        from .services import permissions
+        answer = json.dumps(permissions(args.request))
+        if args.out:
+            Path(args.out).write_text(answer)
+        print(answer)
         return 0
     if args.command == "relay":
         from .relay import run

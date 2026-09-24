@@ -72,6 +72,8 @@ chartremotely read                          report symbol and scale
 chartremotely scales                        list the time frames on offer
 chartremotely studies --row-height 2.5      rebuild the study set
 chartremotely learn                         rediscover the chart's controls
+chartremotely setup                         pair this Mac and make its voice Shortcut
+chartremotely permissions                   report Accessibility and Screen Recording
 chartremotely serve                         run the local listener
 chartremotely pair                          adopt this display to an operator
 chartremotely relay                         hold a connection open for the operator
@@ -89,37 +91,10 @@ ignores everything sent to it.
 
 ## Running it as a service
 
-Both transports are long-lived, so run them under `launchd` rather than a
-terminal. Two services rather than one, so a relay that loses the network
-cannot take the local listener down with it:
-
-```bash
-for cmd in serve relay; do
-  cat > ~/Library/LaunchAgents/com.chartremotely.$cmd.plist <<PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key><string>com.chartremotely.$cmd</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>$(command -v chartremotely)</string>
-    <string>$cmd</string>
-  </array>
-  <key>RunAtLoad</key><true/>
-  <key>KeepAlive</key><true/>
-  <key>ThrottleInterval</key><integer>10</integer>
-  <key>StandardOutPath</key><string>/tmp/chartremotely-$cmd.log</string>
-  <key>StandardErrorPath</key><string>/tmp/chartremotely-$cmd.err</string>
-</dict>
-</plist>
-PLIST
-  launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.chartremotely.$cmd.plist
-done
-```
-
-Pair first - `relay` needs the credentials `pair` stores before it has
-anything to dial with.
+`chartremotely setup` installs both transports as launchd agents
+(`com.chartremotely.serve` and `com.chartremotely.relay`), logging to
+`~/Library/Logs/chartremotely-<command>.log`. Two services rather than one, so
+a relay that loses the network cannot take the local listener down with it.
 
 Time frames are spoken as mnemonics chosen for phonetic distance, because
 digits are the worst thing to say to a recogniser - "fifteen" and "fifty"
@@ -133,17 +108,27 @@ collide, and so do "one" and "won":
 ## Install
 
 ```bash
-pip install "chartremotely[macos] @ git+https://github.com/lonniev/ChartRemotely-agent"
-chartremotely doctor
+curl -fsSL https://chartremotely.tollbooth-dpyc.com/install.sh | sh
 ```
 
-`doctor` reports what is missing: Accessibility permission, a running
-thinkorswim, a resolvable symbol field, a listening agent.
+That installs [uv](https://docs.astral.sh/uv/) if it is missing, installs this
+agent from PyPI (`uv tool install --python 3.12 'chartremotely[macos,setup]'`),
+and runs `chartremotely setup`, which:
 
-**One step cannot be automated.** macOS requires a human to grant
-Accessibility permission in System Settings → Privacy & Security →
-Accessibility. That is the point of the protection, and no installer can or
-should bypass it.
+1. proves who owns the display — your existing npub by answering a Nostr DM,
+   a key already saved on this Mac, or a new key it makes and saves for you
+   in the Keychain and, through Safari, in iCloud Passwords;
+2. pairs this Mac with that identity, with no code to copy;
+3. gives the Mac its tailnet address with `tailscale serve`;
+4. installs the listener and the relay as launchd agents;
+5. asks macOS for Accessibility and Screen Recording for the Python that runs them;
+6. makes this Mac's ChartRemotely voice Shortcut and opens it for import.
+
+Run it again at any time: finished steps are skipped. `chartremotely doctor`
+reports anything still missing.
+
+To pair by hand instead, run `chartremotely pair` and give the code it prints
+to your MCP client (`chart_pair_agent`), or type it on the site's Profile page.
 
 ## How it finds anything
 

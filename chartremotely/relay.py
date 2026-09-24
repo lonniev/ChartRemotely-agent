@@ -54,25 +54,18 @@ def _post(url: str, payload: dict, timeout: float) -> dict:
     return json.loads(raw) if raw.strip() else {}
 
 
-def pair(operator_url: str | None = None, on_code=print) -> dict:
-    """Ask the operator for a code, show it, and wait to be adopted.
-
-    The patron reads the code to their MCP client, which calls
-    ``pair_agent``. This machine hands out nothing: it proves it is theirs
-    and receives an identity in return.
-    """
-    cfg = config.load()
-    base = (operator_url or cfg.get("operator_url") or "").rstrip("/")
-    if not base:
-        raise PairingError("no operator URL; pass one or set operator_url in config")
-
+def open_code(base: str) -> tuple[str, float]:
+    """Ask the operator for a pairing code. Returns the code and its lifetime in seconds."""
     opened = _post(f"{base}/agent/open", {}, timeout=20)
     code = opened.get("code")
     if not code:
         raise PairingError("the operator did not issue a pairing code")
-    on_code(code)
+    return code, float(opened.get("expires_in") or 900)
 
-    deadline = time.time() + float(opened.get("expires_in") or 900)
+
+def collect(base: str, code: str, expires_in: float) -> dict:
+    """Wait until someone adopts the code, then keep the identity it earns."""
+    deadline = time.time() + expires_in
     while time.time() < deadline:
         time.sleep(CLAIM_INTERVAL)
         try:
@@ -88,6 +81,27 @@ def pair(operator_url: str | None = None, on_code=print) -> dict:
                                  agent_id=claimed["agent_id"],
                                  agent_secret=claimed["secret"])
     raise PairingError("the pairing code expired before anyone claimed it")
+
+
+def operator_base(operator_url: str | None) -> str:
+    base = (operator_url or config.load().get("operator_url") or "").rstrip("/")
+    if not base:
+        raise PairingError("no operator URL; pass one or set operator_url in config")
+    return base
+
+
+def pair(operator_url: str | None = None, on_code=print) -> dict:
+    """Ask the operator for a code, show it, and wait to be adopted.
+
+    The patron reads the code to their MCP client, which calls
+    ``pair_agent``. ``setup`` takes the same path and adopts the code itself.
+    This machine hands out nothing: it proves it is theirs and receives an
+    identity in return.
+    """
+    base = operator_base(operator_url)
+    code, expires_in = open_code(base)
+    on_code(code)
+    return collect(base, code, expires_in)
 
 
 def run(operator_url: str | None = None, once: bool = False) -> None:

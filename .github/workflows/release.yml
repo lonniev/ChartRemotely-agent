@@ -1,0 +1,33 @@
+# On a v* tag: publish the agent to PyPI through trusted publishing (OIDC, no
+# token secret), then cut the GitHub Release from the CHANGELOG with the
+# fleet's shared workflow.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  pypi:
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v6
+      - name: Tag matches pyproject.toml
+        run: |
+          want="v$(grep -m1 '^version' pyproject.toml | cut -d'"' -f2)"
+          [ "$GITHUB_REF_NAME" = "$want" ] || { echo "tag $GITHUB_REF_NAME != $want"; exit 1; }
+      - run: uv build
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  release:
+    needs: pypi
+    uses: lonniev/dpyc-community/.github/workflows/github-release.yml@main
+    secrets: inherit
