@@ -6,13 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-09-24
+
 ### Fixed
 - A command sent to another display ("Where?") no longer fails with "at most 64 and 200 printable characters": the Shortcut splices this Mac's own replies, which end in a newline, into the command, so the Mac now collapses whitespace before forwarding it.
 
 ### Changed
 - Every question in the voice Shortcut takes a single line, so Return answers it instead of starting a new line. Run `chartremotely setup` (or rebuild the Shortcut) to get it.
-
-### Changed
 - After an automatic release, the factory App opens a CHANGELOG-only PR, with auto-merge on, that files the released `[Unreleased]` lines under a dated `## [x.y.z]` section; the release notes are that same section. 0.2.2 to 0.2.5 are filed here from their tags.
 
 ## [0.2.5] - 2026-09-24
