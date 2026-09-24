@@ -7,6 +7,9 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Changed
+- Requires Python 3.12, which the Tollbooth SDK it depends on already requires; `uv` could not resolve the project for 3.11.
+
+### Changed
 - A merge to `main` that changes the package publishes the next patch release to PyPI by itself, after ruff and the tests pass, and tags it with a GitHub Release. Raising `version` in `pyproject.toml` asks for a minor or major release instead.
 - The pushed picture names the symbol the last chart-changing command of the burst put on screen, carried as data from the command (`vocab.answer` → `Answer.symbol`) to the push; the symbol field is read only when no command named one (it can be stale), so the operator can keep one picture per symbol. Left off when the symbol cannot be read or is not symbol-shaped. Needs ChartRemotely-mcp with per-symbol pictures; an older operator ignores the field.
 
