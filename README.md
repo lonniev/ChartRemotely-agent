@@ -43,8 +43,8 @@ drives a display, set the chart up for being looked at from elsewhere:
 
 - collapse the **Active Trader** ladder on the right (it shows P/L Open,
   P/L Day and Net Pos);
-- turn off position and order lines on the chart (chart **Style → Settings →
-  General**: *Show open orders* / *Show trade history*, and the position line).
+- turn off the position, open-order and trade-history markers in the chart's
+  own settings.
 
 Snapshots need macOS **Screen Recording** for the Python that runs the relay,
 as well as Accessibility.
