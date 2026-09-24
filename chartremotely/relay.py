@@ -19,6 +19,7 @@ import urllib.error
 import urllib.request
 
 from . import config
+from .answer import Answer
 
 #: Poll window. The operator holds a request open for slightly less than
 #: this, so a timeout here means the network dropped it, not that the
@@ -32,7 +33,7 @@ class PairingError(RuntimeError):
     """Pairing could not be completed."""
 
 
-def execute(command: str) -> str:
+def execute(command: str) -> Answer:
     """Hand a relayed command to the agent's own vocabulary.
 
     Imported lazily and wrapped here for one reason: the wire logic in this
@@ -40,8 +41,8 @@ def execute(command: str) -> str:
     drivers in with it - making the whole file unimportable anywhere the
     drivers are not installed, CI included.
     """
-    from .vocab import dispatch
-    return dispatch(command)
+    from .vocab import answer
+    return answer(command)
 
 
 def _post(url: str, payload: dict, timeout: float) -> dict:
@@ -135,7 +136,8 @@ def run(operator_url: str | None = None, once: bool = False) -> None:
 
         if envelope.get("command"):
             command = str(envelope["command"])
-            reply = execute(command)
+            result = execute(command)
+            reply = result.reply
             try:
                 _post(f"{base}/agent/result",
                       {**credentials, "id": envelope.get("id"), "reply": reply},
@@ -144,6 +146,6 @@ def run(operator_url: str | None = None, once: bool = False) -> None:
                 pass          # the caller has already timed out and refunded
             # After the reply, never before: the picture of a changed chart.
             from . import push
-            push.after_reply(command, reply)
+            push.after_reply(command, reply, result.symbol)
         if once:
             return

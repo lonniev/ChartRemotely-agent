@@ -44,10 +44,6 @@ _NOT_A_CHANGE = frozenset({"resolve", "scale", "read", "snapshot"})
 #: the same shape; anything else is left off rather than sent.
 SYMBOL = re.compile(r"^[A-Z0-9./^$-]{1,15}$")
 
-#: The symbol a successful set names in its reply — "Showing PLTR at swing.
-#: Good luck." or "Showing PLTR. Good luck." (see vocab.cmd_set).
-_SHOWING = re.compile(r"^Showing (\S+?)(?: at |\. Good luck\.$)")
-
 _state = threading.Condition()
 #: The symbol the last successful chart-changing command put on the chart.
 #: A burst's picture carries the LAST one; a change that names none keeps it.
@@ -60,12 +56,6 @@ def changes_chart(request: str, reply: str) -> bool:
     """Whether this answered request changed what the chart shows."""
     verb = (request or "").strip().partition(" ")[0].lower()
     return bool(verb) and verb not in _NOT_A_CHANGE and not reply.startswith("ERR")
-
-
-def named_symbol(reply: str) -> str | None:
-    """The symbol a successful chart change put on screen, from its reply."""
-    m = _SHOWING.match(reply or "")
-    return symbol_label(m.group(1)) if m else None
 
 
 def symbol_label(raw: object) -> str | None:
@@ -108,12 +98,16 @@ def _showing() -> str | None:
         return None
 
 
-def after_reply(request: str, reply: str) -> None:
-    """Call once a reply has been sent. Schedules a picture if the chart changed."""
+def after_reply(request: str, reply: str, symbol: str | None = None) -> None:
+    """Call once a reply has been sent. Schedules a picture if the chart changed.
+
+    ``symbol`` is what the command put on the chart (vocab.Answer.symbol), when
+    it named one; a change that names none keeps the previous command's.
+    """
     global _named
     if changes_chart(request, reply):
         with _state:
-            _named = named_symbol(reply) or _named
+            _named = symbol_label(symbol) or _named
         schedule()
 
 

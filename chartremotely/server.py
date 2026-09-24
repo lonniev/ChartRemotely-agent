@@ -18,7 +18,7 @@ import urllib.parse
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from . import config, push
-from .vocab import dispatch
+from .vocab import answer
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -61,9 +61,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def _answer(self, request: str) -> None:
         """Reply first; only then schedule the picture of a changed chart."""
-        reply = dispatch(request)
-        self._reply(200, reply)
-        push.after_reply(request, reply)
+        result = answer(request)
+        self._reply(200, result.reply)
+        push.after_reply(request, result.reply, result.symbol)
 
     def log_message(self, *args) -> None:
         """Silence. Requests carry spoken input; do not write it to a log."""

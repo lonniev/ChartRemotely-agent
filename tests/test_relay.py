@@ -12,6 +12,7 @@ from typing import ClassVar
 import pytest
 
 from chartremotely import relay
+from chartremotely.answer import Answer
 
 
 class StubOperator(BaseHTTPRequestHandler):
@@ -100,7 +101,7 @@ def test_a_relayed_command_is_dispatched_and_answered(operator, monkeypatch):
     relay.pair(operator, on_code=lambda c: None)
     StubOperator.commands.append({"id": "r1", "command": "read"})
     # The vocabulary is the agent's own; stub it so no GUI is required.
-    monkeypatch.setattr(relay, "execute", lambda cmd: f"dispatched:{cmd}")
+    monkeypatch.setattr(relay, "execute", lambda cmd: Answer(f"dispatched:{cmd}"))
     relay.run(once=True)
     assert StubOperator.results == [
         {"agent_id": "a1", "secret": "s1", "id": "r1", "reply": "dispatched:read"}]
@@ -109,7 +110,7 @@ def test_a_relayed_command_is_dispatched_and_answered(operator, monkeypatch):
 def test_an_idle_poll_reports_nothing(operator, monkeypatch):
     StubOperator.claimed = True
     relay.pair(operator, on_code=lambda c: None)
-    monkeypatch.setattr(relay, "execute", lambda cmd: "should not be called")
+    monkeypatch.setattr(relay, "execute", lambda cmd: Answer("should not be called"))
     relay.run(once=True)
     assert StubOperator.results == []
 
@@ -164,7 +165,7 @@ def test_the_picture_is_scheduled_only_after_the_result_is_posted(operator, monk
     StubOperator.claimed = True
     relay.pair(operator, on_code=lambda c: None)
     StubOperator.commands.append({"id": "r2", "command": "set PLTR"})
-    monkeypatch.setattr(relay, "execute", lambda cmd: "Showing PLTR. Good luck.")
+    monkeypatch.setattr(relay, "execute", lambda cmd: Answer("Showing PLTR. Good luck.", "PLTR"))
     real_post = relay._post
 
     def post(url, payload, timeout):
@@ -172,6 +173,6 @@ def test_the_picture_is_scheduled_only_after_the_result_is_posted(operator, monk
             events.append("result")
         return real_post(url, payload, timeout)
     monkeypatch.setattr(relay, "_post", post)
-    monkeypatch.setattr(push, "after_reply", lambda c, r: events.append(("picture", c)))
+    monkeypatch.setattr(push, "after_reply", lambda c, r, s: events.append(("picture", c, s)))
     relay.run(once=True)
-    assert events == ["result", ("picture", "set PLTR")]
+    assert events == ["result", ("picture", "set PLTR", "PLTR")]

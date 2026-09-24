@@ -63,36 +63,33 @@ def labelled(monkeypatch):
 
 def test_a_burst_is_labelled_with_its_last_set(monkeypatch, labelled):
     monkeypatch.setattr(push, "QUIET_SECONDS", 0.1)
-    push.after_reply("set AAPL", "Showing AAPL at swing, as is. Good luck.")
-    push.after_reply("set MSFT | daily", "Showing MSFT at daily. Good luck.")
+    push.after_reply("set AAPL", "Showing AAPL at swing, as is. Good luck.", "AAPL")
+    push.after_reply("set MSFT | daily", "Showing MSFT at daily. Good luck.", "MSFT")
     time.sleep(0.4)
     assert [b["symbol"] for b in labelled] == ["MSFT"]
 
 
 def test_a_change_naming_no_symbol_keeps_the_last_sets(monkeypatch, labelled):
     monkeypatch.setattr(push, "schedule", lambda: None)
-    push.after_reply("set NVDA", "Showing NVDA. Good luck.")
-    push.after_reply("set | swing", "Scale is swing.")  # a change whose reply names no symbol
+    push.after_reply("set NVDA", "Showing NVDA. Good luck.", "NVDA")
+    push.after_reply("set | swing", "Scale is swing.")  # a change that names no symbol
     push.push_now()
     assert labelled[-1]["symbol"] == "NVDA"
 
 
 def test_a_failed_set_does_not_relabel(monkeypatch, labelled):
     monkeypatch.setattr(push, "schedule", lambda: None)
-    push.after_reply("set NVDA", "Showing NVDA. Good luck.")
+    push.after_reply("set NVDA", "Showing NVDA. Good luck.", "NVDA")
     push.after_reply("set ZZZZ", "ERR no symbol field found")
     push.push_now()
     assert labelled[-1]["symbol"] == "NVDA"
 
 
-@pytest.mark.parametrize("reply, symbol", [
-    ("Showing PLTR at swing. Good luck.", "PLTR"),
-    ("Showing BRK/B at daily, as is. Good luck.", "BRK/B"),
-    ("Showing $SPX.X. Good luck.", "$SPX.X"),
-    ("PLTR at swing", None),
-])
-def test_the_named_symbol_is_read_from_the_reply(reply, symbol):
-    assert push.named_symbol(reply) == symbol
+def test_the_label_comes_from_the_command_not_the_wording(monkeypatch, labelled):
+    monkeypatch.setattr(push, "schedule", lambda: None)
+    push.after_reply("set TSLA", "Now on the wall: Tesla. Enjoy.", "TSLA")
+    push.push_now()
+    assert labelled[-1]["symbol"] == "TSLA"
 
 
 def test_the_symbol_field_is_only_the_fallback(labelled):
