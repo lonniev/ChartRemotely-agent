@@ -77,7 +77,7 @@ class Handler(BaseHTTPRequestHandler):
         result = answer(request)
         self._reply(200, result.reply)
         requestlog.request("serve", request, where, result.reply)
-        push.after_reply(request, result.reply, result.symbol)
+        push.after_reply(request, result.reply, result.symbol, result.scale)
 
     def log_message(self, *args) -> None:
         """Silence the stock access log: its request line can carry ``?t=<token>``.

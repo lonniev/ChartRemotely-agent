@@ -15,6 +15,7 @@ PAIRED = {"operator_url": "https://op.test/", "agent_id": "a1", "agent_secret": 
 def isolated_config(tmp_path, monkeypatch):
     monkeypatch.setattr(guilock.config, "CONFIG_DIR", tmp_path)
     monkeypatch.setattr(push, "_named", None)
+    monkeypatch.setattr(push, "_scaled", None)
 
 
 def test_an_unpaired_mac_pushes_nothing():
@@ -42,6 +43,17 @@ def test_futures_indices_and_share_classes_are_symbol_shaped(raw):
 def test_an_unreadable_symbol_is_left_off_rather_than_sent(raw):
     _, body = push.payload(PAIRED, "img", raw)
     assert "symbol" not in body
+
+
+def test_the_push_names_the_scale_the_reply_stated():
+    _, body = push.payload(PAIRED, "img", "PLTR", "  30  minutes ")
+    assert body["scale"] == "30 minutes"
+
+
+@pytest.mark.parametrize("raw", [None, "", "   ", "x" * 25, "<b>half</b>", "half;", "half\x07", 30])
+def test_an_unreadable_scale_is_left_off_rather_than_sent(raw):
+    _, body = push.payload(PAIRED, "img", "PLTR", raw)
+    assert "scale" not in body
 
 
 @pytest.fixture
@@ -90,6 +102,21 @@ def test_the_label_comes_from_the_command_not_the_wording(monkeypatch, labelled)
     push.after_reply("set TSLA", "Now on the wall: Tesla. Enjoy.", "TSLA")
     push.push_now()
     assert labelled[-1]["symbol"] == "TSLA"
+
+
+def test_the_picture_carries_the_scale_the_last_change_stated(monkeypatch, labelled):
+    monkeypatch.setattr(push, "schedule", lambda: None)
+    push.after_reply("set PLTR | half", "Showing PLTR at half. Good luck.", "PLTR", "half")
+    push.after_reply("set MSFT", "Showing MSFT. Good luck.", "MSFT")  # scale unknown: kept
+    push.push_now()
+    assert labelled[-1]["symbol"] == "MSFT" and labelled[-1]["scale"] == "half"
+
+
+def test_no_scale_is_sent_when_none_was_ever_stated(monkeypatch, labelled):
+    monkeypatch.setattr(push, "schedule", lambda: None)
+    push.after_reply("set NVDA", "Showing NVDA. Good luck.", "NVDA")
+    push.push_now()
+    assert "scale" not in labelled[-1]
 
 
 def test_the_symbol_field_is_only_the_fallback(labelled):

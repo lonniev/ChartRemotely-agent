@@ -83,10 +83,10 @@ def set_chart(ticker: str, scale: str = "") -> Answer:
         pass
 
     if word:
-        return Answer(f"Showing {ticker} at {word}. Good luck.", shown)
+        return Answer(f"Showing {ticker} at {word}. Good luck.", shown, word)
     try:
         _, current = timeframe.current()
-        return Answer(f"Showing {ticker} at {current}, as is. Good luck.", shown)
+        return Answer(f"Showing {ticker} at {current}, as is. Good luck.", shown, current)
     except Exception:
         return Answer(f"Showing {ticker}. Good luck.", shown)
 
