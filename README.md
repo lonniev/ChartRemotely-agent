@@ -130,6 +130,18 @@ reports anything still missing.
 To pair by hand instead, run `chartremotely pair` and give the code it prints
 to your MCP client (`chart_pair_agent`), or type it on the site's Profile page.
 
+## Releases
+
+Every merge to `main` that changes `chartremotely/` or `pyproject.toml` is
+published to PyPI on its own, once ruff and the tests pass: the next patch
+after the newest `vX.Y.Z` tag, tagged and given a GitHub Release. To release a
+minor or major version instead, raise `version` in `pyproject.toml` in the PR;
+the merge publishes that number. Pushing a `v*` tag by hand still publishes
+exactly that version.
+
+Nothing on a Mac updates itself. Upgrade an installed agent with
+`uv tool upgrade chartremotely`.
+
 ## How it finds anything
 
 Nothing is anchored to screen coordinates. thinkorswim layouts differ per
