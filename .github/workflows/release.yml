@@ -120,6 +120,9 @@ jobs:
   stamp-changelog:
     needs: [pypi, auto-release]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write # GITHUB_TOKEN dispatches CI on the stamp branch
     steps:
       - name: Mint a factory App token
         id: token
@@ -129,13 +132,13 @@ jobs:
           private-key: ${{ secrets.DPYC_BOT_PRIVATE_KEY }}
           permission-contents: write
           permission-pull-requests: write
-          permission-actions: write # dispatch CI on the stamp branch
       - uses: actions/checkout@v7
         with:
           ref: main
           fetch-depth: 0 # the tags decide what is still to stamp
           token: ${{ steps.token.outputs.token }}
       - name: Stamp CHANGELOG and open the PR
+        id: stamp
         env:
           GH_TOKEN: ${{ steps.token.outputs.token }}
           VERSION: ${{ needs.pypi.outputs.version }}
@@ -154,6 +157,7 @@ jobs:
           git switch -C "$BRANCH"
           git commit -am "Stamp CHANGELOG through $VERSION"
           git push --force origin "$BRANCH"
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
           pr=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
           if [ -z "$pr" ]; then
             gh pr create --base main --head "$BRANCH" \
@@ -164,9 +168,14 @@ jobs:
             gh pr edit "$pr" --title "Stamp CHANGELOG through $VERSION"
           fi
           gh pr merge "$pr" --auto --squash
-          # Events from this token start no pull_request run, so ask for the
-          # required `test` check on the branch head directly.
-          gh workflow run ci.yml --ref "$BRANCH"
+      # The App token's events start no pull_request run, and the App is not
+      # granted actions, so the job's own token asks for the required `test`
+      # check on the branch head (workflow_dispatch is allowed from it).
+      - name: Run CI on the stamp branch
+        if: steps.stamp.outputs.pushed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run ci.yml --ref changelog/stamp
 
   # Hand-pushed tag: the Release comes from the CHANGELOG section for the tag.
   release:
