@@ -17,7 +17,7 @@ from pathlib import Path
 import Quartz
 from AppKit import NSWorkspace
 
-from . import ax
+from . import ax, config, layout, snapshot, symbol
 
 
 def _frame(pid: int) -> dict | None:
@@ -77,37 +77,57 @@ def clear(app=None) -> list[str]:
     return sorted(hidden)
 
 
-def capture(app=None, crop: tuple[int, int, int, int] | None = None) -> bytes:
-    """PNG of the chart window's own buffer.
+def capture(app=None) -> bytes:
+    """PNG of the chart's own pane, and nothing else in the window.
 
     Captured by window id rather than screen region, so it works even when
     something is floating on top - which is what makes it usable as proof
-    that a remote command landed.
+    that a remote command landed. Then cropped to the pane that holds the
+    chart's symbol field; see :func:`snapshot.chart_crop` for why the rest of
+    the window never leaves this machine.
     """
     app = app or ax.running_app()
     target = _frame(app.processIdentifier())
     if target is None:
         raise ax.NotRunning("no thinkorswim window on screen")
-    window_id = target["kCGWindowNumber"]
+    b = target["kCGWindowBounds"]
+    bounds = (int(b["X"]), int(b["Y"]), int(b["Width"]), int(b["Height"]))
+
+    # Hit-testing answers from the menu bar unless the app is in front.
+    ax.activate(app)
+    ax_app = ax.handle(app)
+    prefix = config.load()["window_prefix"]
+    hit = symbol.discover(ax_app, prefix)
+    if hit is None:
+        raise snapshot.ChartNotIsolated("no chart is visible")
+    panes = layout.panes(ax_app, prefix)
 
     with tempfile.TemporaryDirectory() as tmp:
-        shot = Path(tmp) / "chart.png"
-        subprocess.run(["screencapture", "-x", "-o", "-l", str(window_id), str(shot)],
+        shot = Path(tmp) / "window.png"
+        subprocess.run(["screencapture", "-x", "-o", "-l", str(target["kCGWindowNumber"]), str(shot)],
                        check=True, capture_output=True)
-        if crop:
-            cropped = Path(tmp) / "crop.png"
-            _crop(shot, cropped, *crop)
-            shot = cropped
-        return shot.read_bytes()
+        crop = snapshot.chart_crop(hit, panes, bounds, _pixel_size(shot))
+        chart = Path(tmp) / "chart.png"
+        _crop(shot, chart, *crop)
+        return chart.read_bytes()
+
+
+def _image(path: Path):
+    from CoreFoundation import CFURLCreateWithFileSystemPath, kCFURLPOSIXPathStyle
+
+    url = CFURLCreateWithFileSystemPath(None, str(path), kCFURLPOSIXPathStyle, False)
+    return Quartz.CGImageSourceCreateImageAtIndex(Quartz.CGImageSourceCreateWithURL(url, None), 0, None)
+
+
+def _pixel_size(path: Path) -> tuple[int, int]:
+    image = _image(path)
+    return Quartz.CGImageGetWidth(image), Quartz.CGImageGetHeight(image)
 
 
 def _crop(src: Path, dst: Path, x: int, y: int, w: int, h: int) -> None:
     from CoreFoundation import CFURLCreateWithFileSystemPath, kCFURLPOSIXPathStyle
 
-    url = CFURLCreateWithFileSystemPath(None, str(src), kCFURLPOSIXPathStyle, False)
-    source = Quartz.CGImageSourceCreateWithURL(url, None)
-    image = Quartz.CGImageSourceCreateImageAtIndex(source, 0, None)
-    region = Quartz.CGImageCreateWithImageInRect(image, Quartz.CGRectMake(x, y, w, h))
+    region = Quartz.CGImageCreateWithImageInRect(_image(src), Quartz.CGRectMake(x, y, w, h))
     out_url = CFURLCreateWithFileSystemPath(None, str(dst), kCFURLPOSIXPathStyle, False)
     dest = Quartz.CGImageDestinationCreateWithURL(out_url, "public.png", 1, None)
     Quartz.CGImageDestinationAddImage(dest, region, None)

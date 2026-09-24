@@ -25,11 +25,29 @@ The command vocabulary is closed, and it is one short file: [`vocab.py`](chartre
 | `show <name or ticker>` | Change the chart's symbol |
 | `scale <mnemonic>` | Change the chart's aggregation |
 | `read` | Report POC / value area |
-| `snapshot` | Return a small JPEG of the chart window, so you can see it from afar |
+| `snapshot` | Return a small JPEG of the chart's own pane, so you can see it from afar |
 
 There is no command that opens an order ticket, submits a trade, moves money,
 or reads account balances. Adding one would mean editing that file, in public,
 in this repository.
+
+### What a snapshot shows
+
+Only the pane that holds the chart. The top bar with the account number, and
+the left-hand account, watchlist and news gadgets, never leave the machine.
+When the agent cannot tell the chart's pane apart from the whole window, it
+refuses rather than send the window.
+
+The chart pane still shows whatever thinkorswim draws inside it. On a Mac that
+drives a display, set the chart up for being looked at from elsewhere:
+
+- collapse the **Active Trader** ladder on the right (it shows P/L Open,
+  P/L Day and Net Pos);
+- turn off the position, open-order and trade-history markers in the chart's
+  own settings.
+
+Snapshots need macOS **Screen Recording** for the Python that runs the relay,
+as well as Accessibility.
 
 ## Why the resolver exists
 

@@ -95,7 +95,7 @@ def cmd_read() -> str:
 
 
 def cmd_snapshot() -> str:
-    """A picture of the chart window, so a caller far away can see it."""
+    """A picture of the chart pane, so a caller far away can see it."""
     try:
         return snapshot.as_reply(snapshot.shrink(window.capture()))
     except Exception as exc:
