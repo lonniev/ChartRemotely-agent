@@ -1,0 +1,1 @@
+{ "extends": ["local>lonniev/dpyc-community:renovate-config"] }
