@@ -8,7 +8,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 - A merge to `main` that changes the package publishes the next patch release to PyPI by itself, after ruff and the tests pass, and tags it with a GitHub Release. Raising `version` in `pyproject.toml` asks for a minor or major release instead.
-- The pushed picture names the symbol the chart shows at the moment of capture, so the operator can keep one picture per symbol. Left off when the symbol cannot be read or is not symbol-shaped. Needs ChartRemotely-mcp with per-symbol pictures; an older operator ignores the field.
+- The pushed picture names the symbol the last chart-changing command of the burst put on screen (the symbol field is read only when no command named one — it can be stale), so the operator can keep one picture per symbol. Left off when the symbol cannot be read or is not symbol-shaped. Needs ChartRemotely-mcp with per-symbol pictures; an older operator ignores the field.
 
 ## [0.2.1] - 2026-09-24
 

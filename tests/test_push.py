@@ -14,6 +14,7 @@ PAIRED = {"operator_url": "https://op.test/", "agent_id": "a1", "agent_secret": 
 @pytest.fixture(autouse=True)
 def isolated_config(tmp_path, monkeypatch):
     monkeypatch.setattr(guilock.config, "CONFIG_DIR", tmp_path)
+    monkeypatch.setattr(push, "_named", None)
 
 
 def test_an_unpaired_mac_pushes_nothing():
@@ -43,20 +44,60 @@ def test_an_unreadable_symbol_is_left_off_rather_than_sent(raw):
     assert "symbol" not in body
 
 
-def test_the_symbol_is_read_at_capture_time(monkeypatch):
+@pytest.fixture
+def labelled(monkeypatch):
+    """Capture stubbed out; returns the bodies pushed. The symbol field reads OLD."""
     import chartremotely
 
     sent = []
     monkeypatch.setattr(push.config, "load", lambda: PAIRED)
     monkeypatch.setattr(push.relay, "_post", lambda url, body, timeout: sent.append(body))
-    monkeypatch.setattr(push, "_showing", lambda: "NVDA")
+    monkeypatch.setattr(push, "_showing", lambda: "OLD")
     monkeypatch.setattr(chartremotely, "window",
                         types.SimpleNamespace(capture=lambda: b"png"), raising=False)
     monkeypatch.setattr(chartremotely, "snapshot",
                         types.SimpleNamespace(shrink=lambda b: b, as_reply=lambda b: "data:img"),
                         raising=False)
+    return sent
+
+
+def test_a_burst_is_labelled_with_its_last_set(monkeypatch, labelled):
+    monkeypatch.setattr(push, "QUIET_SECONDS", 0.1)
+    push.after_reply("set AAPL", "Showing AAPL at swing, as is. Good luck.")
+    push.after_reply("set MSFT | daily", "Showing MSFT at daily. Good luck.")
+    time.sleep(0.4)
+    assert [b["symbol"] for b in labelled] == ["MSFT"]
+
+
+def test_a_change_naming_no_symbol_keeps_the_last_sets(monkeypatch, labelled):
+    monkeypatch.setattr(push, "schedule", lambda: None)
+    push.after_reply("set NVDA", "Showing NVDA. Good luck.")
+    push.after_reply("set | swing", "Scale is swing.")  # a change whose reply names no symbol
     push.push_now()
-    assert sent == [{"agent_id": "a1", "secret": "s1", "image": "data:img", "symbol": "NVDA"}]
+    assert labelled[-1]["symbol"] == "NVDA"
+
+
+def test_a_failed_set_does_not_relabel(monkeypatch, labelled):
+    monkeypatch.setattr(push, "schedule", lambda: None)
+    push.after_reply("set NVDA", "Showing NVDA. Good luck.")
+    push.after_reply("set ZZZZ", "ERR no symbol field found")
+    push.push_now()
+    assert labelled[-1]["symbol"] == "NVDA"
+
+
+@pytest.mark.parametrize("reply, symbol", [
+    ("Showing PLTR at swing. Good luck.", "PLTR"),
+    ("Showing BRK/B at daily, as is. Good luck.", "BRK/B"),
+    ("Showing $SPX.X. Good luck.", "$SPX.X"),
+    ("PLTR at swing", None),
+])
+def test_the_named_symbol_is_read_from_the_reply(reply, symbol):
+    assert push.named_symbol(reply) == symbol
+
+
+def test_the_symbol_field_is_only_the_fallback(labelled):
+    push.push_now()
+    assert labelled[-1]["symbol"] == "OLD"
 
 
 def test_a_failed_symbol_read_still_sends_the_picture(monkeypatch):

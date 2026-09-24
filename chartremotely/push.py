@@ -3,8 +3,9 @@
 A chart changed by voice goes straight to this machine over the tailnet, so
 the operator never hears of it. Once a change is answered — after the reply
 ("… Good luck.") has been sent — one picture of the chart pane is pushed up so
-the patron's browser can offer it, labelled with the symbol the chart shows at
-the moment of capture. The operator keeps the newest picture per symbol,
+the patron's browser can offer it, labelled with the symbol the last command
+of the burst put on the chart (the symbol field is read only as a fallback:
+it can be stale). The operator keeps the newest picture per symbol,
 encrypted, for an hour each.
 
 Three rules keep it out of the way:
@@ -43,7 +44,14 @@ _NOT_A_CHANGE = frozenset({"resolve", "scale", "read", "snapshot"})
 #: the same shape; anything else is left off rather than sent.
 SYMBOL = re.compile(r"^[A-Z0-9./^$-]{1,15}$")
 
+#: The symbol a successful set names in its reply — "Showing PLTR at swing.
+#: Good luck." or "Showing PLTR. Good luck." (see vocab.cmd_set).
+_SHOWING = re.compile(r"^Showing (\S+?)(?: at |\. Good luck\.$)")
+
 _state = threading.Condition()
+#: The symbol the last successful chart-changing command put on the chart.
+#: A burst's picture carries the LAST one; a change that names none keeps it.
+_named: str | None = None
 _due: float | None = None
 _worker: threading.Thread | None = None
 
@@ -52,6 +60,12 @@ def changes_chart(request: str, reply: str) -> bool:
     """Whether this answered request changed what the chart shows."""
     verb = (request or "").strip().partition(" ")[0].lower()
     return bool(verb) and verb not in _NOT_A_CHANGE and not reply.startswith("ERR")
+
+
+def named_symbol(reply: str) -> str | None:
+    """The symbol a successful chart change put on screen, from its reply."""
+    m = _SHOWING.match(reply or "")
+    return symbol_label(m.group(1)) if m else None
 
 
 def symbol_label(raw: object) -> str | None:
@@ -81,10 +95,11 @@ def payload(cfg: dict, image: str, symbol: str | None = None) -> tuple[str, dict
 
 
 def _showing() -> str | None:
-    """The symbol the chart shows right now, or None. Never raises.
+    """The symbol field's value, or None. Never raises.
 
-    Read at capture, not taken from the command: the chart may have been
-    changed again, by hand or by voice, since the request that scheduled this.
+    Only a fallback: thinkorswim does not push accessibility updates, so right
+    after a change this can still name the previous symbol. The symbol a
+    command named is preferred whenever one is known.
     """
     try:
         from . import symbol
@@ -95,7 +110,10 @@ def _showing() -> str | None:
 
 def after_reply(request: str, reply: str) -> None:
     """Call once a reply has been sent. Schedules a picture if the chart changed."""
+    global _named
     if changes_chart(request, reply):
+        with _state:
+            _named = named_symbol(reply) or _named
         schedule()
 
 
@@ -131,8 +149,10 @@ def push_now() -> None:
         from . import snapshot, window
         with guilock.driving():
             image = snapshot.as_reply(snapshot.shrink(window.capture()))
-            showing = _showing()
-        url, body = payload(cfg, image, showing)
+            with _state:
+                label = _named
+            label = label or _showing()
+        url, body = payload(cfg, image, label)
         relay._post(url, body, timeout=30)
     except Exception:  # noqa: BLE001, S110 - deliberate: see the module docstring
         pass
