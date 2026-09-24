@@ -3,7 +3,7 @@ name = "chartremotely"
 version = "0.2.1"
 description = "Remote control of desktop charting applications on macOS"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license = { file = "LICENSE" }
 authors = [{ name = "Lonnie VanZandt" }]
 keywords = ["thinkorswim", "accessibility", "automation", "charting"]
