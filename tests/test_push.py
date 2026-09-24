@@ -2,6 +2,7 @@
 
 import threading
 import time
+import types
 
 import pytest
 
@@ -24,6 +25,48 @@ def test_the_push_carries_the_agents_identity_and_the_picture():
     url, body = push.payload(PAIRED, "data:image/jpeg;base64,AAAA")
     assert url == "https://op.test/agent/snapshot"
     assert body == {"agent_id": "a1", "secret": "s1", "image": "data:image/jpeg;base64,AAAA"}
+
+
+def test_the_push_names_the_symbol_the_chart_shows():
+    _, body = push.payload(PAIRED, "img", " pltr ")
+    assert body["symbol"] == "PLTR"
+
+
+@pytest.mark.parametrize("raw", ["/ES", ".SPX", "$SPX.X", "^VIX", "BRK/B", "BRK-B", "A"])
+def test_futures_indices_and_share_classes_are_symbol_shaped(raw):
+    assert push.symbol_label(raw) == raw
+
+
+@pytest.mark.parametrize("raw", [None, "", "   ", "TOO-LONG-A-SYMBOL", "PL TR", "<b>", "PLTR;", 7])
+def test_an_unreadable_symbol_is_left_off_rather_than_sent(raw):
+    _, body = push.payload(PAIRED, "img", raw)
+    assert "symbol" not in body
+
+
+def test_the_symbol_is_read_at_capture_time(monkeypatch):
+    import chartremotely
+
+    sent = []
+    monkeypatch.setattr(push.config, "load", lambda: PAIRED)
+    monkeypatch.setattr(push.relay, "_post", lambda url, body, timeout: sent.append(body))
+    monkeypatch.setattr(push, "_showing", lambda: "NVDA")
+    monkeypatch.setattr(chartremotely, "window",
+                        types.SimpleNamespace(capture=lambda: b"png"), raising=False)
+    monkeypatch.setattr(chartremotely, "snapshot",
+                        types.SimpleNamespace(shrink=lambda b: b, as_reply=lambda b: "data:img"),
+                        raising=False)
+    push.push_now()
+    assert sent == [{"agent_id": "a1", "secret": "s1", "image": "data:img", "symbol": "NVDA"}]
+
+
+def test_a_failed_symbol_read_still_sends_the_picture(monkeypatch):
+    import chartremotely
+
+    def unreadable():
+        raise RuntimeError("no symbol field")
+    monkeypatch.setattr(chartremotely, "symbol",
+                        types.SimpleNamespace(current=unreadable), raising=False)
+    assert push._showing() is None
 
 
 @pytest.mark.parametrize("request_, reply, changed", [

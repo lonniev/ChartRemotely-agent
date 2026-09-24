@@ -3,8 +3,9 @@
 A chart changed by voice goes straight to this machine over the tailnet, so
 the operator never hears of it. Once a change is answered — after the reply
 ("… Good luck.") has been sent — one picture of the chart pane is pushed up so
-the patron's browser can offer it. The operator keeps only the newest,
-encrypted, for an hour.
+the patron's browser can offer it, labelled with the symbol the chart shows at
+the moment of capture. The operator keeps the newest picture per symbol,
+encrypted, for an hour each.
 
 Three rules keep it out of the way:
 
@@ -23,6 +24,7 @@ the capture is imported lazily.
 
 from __future__ import annotations
 
+import re
 import threading
 import time
 
@@ -36,6 +38,11 @@ QUIET_SECONDS = 1.5
 #: company name — changes the chart (see vocab.dispatch).
 _NOT_A_CHANGE = frozenset({"resolve", "scale", "read", "snapshot"})
 
+#: What a symbol label may look like on the wire: tickers, futures (/ES),
+#: indices (.SPX, $SPX.X, ^VIX) and share classes (BRK/B). The operator checks
+#: the same shape; anything else is left off rather than sent.
+SYMBOL = re.compile(r"^[A-Z0-9./^$-]{1,15}$")
+
 _state = threading.Condition()
 _due: float | None = None
 _worker: threading.Thread | None = None
@@ -47,13 +54,43 @@ def changes_chart(request: str, reply: str) -> bool:
     return bool(verb) and verb not in _NOT_A_CHANGE and not reply.startswith("ERR")
 
 
-def payload(cfg: dict, image: str) -> tuple[str, dict] | None:
-    """Where to send a picture and what to send, or None when not paired."""
+def symbol_label(raw: object) -> str | None:
+    """The chart's symbol as sent to the operator, or None when it is not symbol-shaped."""
+    if not isinstance(raw, str):
+        return None
+    label = raw.strip().upper()
+    return label if SYMBOL.match(label) else None
+
+
+def payload(cfg: dict, image: str, symbol: str | None = None) -> tuple[str, dict] | None:
+    """Where to send a picture and what to send, or None when not paired.
+
+    ``symbol`` is what the chart showed when the picture was taken; it is left
+    out when unknown or not symbol-shaped, and the operator files the picture
+    under a plain "Chart".
+    """
     base = (cfg.get("operator_url") or "").rstrip("/")
     agent_id, secret = cfg.get("agent_id"), cfg.get("agent_secret")
     if not (base and agent_id and secret):
         return None
-    return f"{base}/agent/snapshot", {"agent_id": agent_id, "secret": secret, "image": image}
+    body = {"agent_id": agent_id, "secret": secret, "image": image}
+    label = symbol_label(symbol)
+    if label:
+        body["symbol"] = label
+    return f"{base}/agent/snapshot", body
+
+
+def _showing() -> str | None:
+    """The symbol the chart shows right now, or None. Never raises.
+
+    Read at capture, not taken from the command: the chart may have been
+    changed again, by hand or by voice, since the request that scheduled this.
+    """
+    try:
+        from . import symbol
+        return symbol_label(symbol.current())
+    except Exception:  # noqa: BLE001 - a label is optional; the picture is not
+        return None
 
 
 def after_reply(request: str, reply: str) -> None:
@@ -94,7 +131,8 @@ def push_now() -> None:
         from . import snapshot, window
         with guilock.driving():
             image = snapshot.as_reply(snapshot.shrink(window.capture()))
-        url, body = payload(cfg, image)
+            showing = _showing()
+        url, body = payload(cfg, image, showing)
         relay._post(url, body, timeout=30)
     except Exception:  # noqa: BLE001, S110 - deliberate: see the module docstring
         pass
