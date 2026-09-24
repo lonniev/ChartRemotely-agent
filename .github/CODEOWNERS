@@ -1,0 +1,25 @@
+# CODEOWNERS — the human gate for the agentic pipeline.
+#
+# Files covered here require @lonniev's review before merge (enforced by branch
+# protection: "Require review from Code Owners"). Files left UNCOVERED are eligible for
+# path-gated auto-merge once CI is green and QA applies qa/pass.
+#
+# Default-deny, then carve out: CODEOWNERS is LAST-MATCH-WINS, so the catch-all comes
+# first and anything not imagined yet lands under review.
+
+# Everything needs review …
+* @lonniev
+
+# … except the paths the pipeline is trusted to land on its own. These match
+# auto-merge.yml's low-risk allowlist, so what CODEOWNERS releases is exactly what
+# auto-merge will take.
+/tests/
+*.md
+
+# WHAT A PLAUSIBLE EDIT COULD BREAK HERE: this agent types into a trading application on
+# a patron's Mac, with Accessibility and Screen Recording granted. Review with that in mind:
+# - the closed vocabulary in vocab.py — widening it widens what a compromised operator can
+#   make this machine do;
+# - snapshot.chart_crop and window.capture, which must crop to the chart pane and refuse
+#   rather than send the whole window (account number, balances, positions);
+# - the relay and push credentials in config.py, and the loopback-only listener in server.py.
