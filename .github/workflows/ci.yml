@@ -3,6 +3,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # The Release workflow's stamp job dispatches this on changelog/stamp: a PR its
+  # App token opens starts no pull_request run, and `test` is a required check.
+  workflow_dispatch:
 jobs:
   test:
     runs-on: ubuntu-latest
