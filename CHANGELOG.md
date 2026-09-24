@@ -7,6 +7,11 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Changed
+- After an automatic release, the factory App opens a CHANGELOG-only PR, with auto-merge on, that files the released `[Unreleased]` lines under a dated `## [x.y.z]` section; the release notes are that same section. 0.2.2 to 0.2.5 are filed here from their tags.
+
+## [0.2.5] - 2026-09-24
+
+### Changed
 - "Where?" names are matched only by the operator, which now matches loosely ("mini mac", "mini" and "mack meeny" find "Mac mini"; needs ChartRemotely-mcp with loose display names). This Mac runs a command without asking only when "Where?" is blank or exactly its agent_id; any name, its own included, goes to the operator, which answers `self` when the name is this Mac's. The local name check and its copy of the operator's `display_key` are gone, as is `display_label` in the config - no pairing ever wrote it on a Mac set up before it, so every name was being forwarded anyway.
 
 ### Added
@@ -15,12 +20,18 @@ All notable changes to this project are documented here. The format follows
 ### Fixed
 - Re-running `chartremotely setup` on a Mac whose services are running no longer stops with "Bootstrap failed: 5: Input/output error" and the listener left down: it waits for launchd to let go of the old service, retries while launchd settles, and otherwise stops with launchd's own reason.
 
+## [0.2.4] - 2026-09-24
+
 ### Added
 - The voice Shortcut asks a third question, "Where?", after the scale, and sends the dictated answer verbatim as a separate JSON field `where` beside `cmd` (the vocab grammar is unchanged). Empty, this Mac's own display name or its agent_id runs here as before; any other name is forwarded through the operator's `/agent/forward` to that display of the same owner, and its reply is spoken. An unknown name answers `ERR No display named "<where>". Yours: A, B.` A forwarded command pushes no picture from this Mac; the target pushes its own. Names match ignoring case, spaces, hyphens, underscores and dots, exactly as the operator matches them. Needs ChartRemotely-mcp with `/agent/forward`; re-run `chartremotely setup` to get the new Shortcut.
 - `setup` remembers this display's name (`display_label`), so "Where? <this Mac>" never leaves the Mac. A Mac paired before this learns it the first time the operator answers that a name is its own.
 
+## [0.2.3] - 2026-09-24
+
 ### Changed
 - Requires Python 3.12, which the Tollbooth SDK it depends on already requires; `uv` could not resolve the project for 3.11.
+
+## [0.2.2] - 2026-09-24
 
 ### Changed
 - A merge to `main` that changes the package publishes the next patch release to PyPI by itself, after ruff and the tests pass, and tags it with a GitHub Release. Raising `version` in `pyproject.toml` asks for a minor or major release instead.

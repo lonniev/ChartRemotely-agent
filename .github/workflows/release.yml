@@ -8,7 +8,8 @@
 #     PR raised it higher (that is how a minor or major release is asked for).
 #     The version is stamped into pyproject.toml inside the runner only - main
 #     is protected and CI never commits to it. The tag and the GitHub Release
-#     are made after the upload succeeds.
+#     are made after the upload succeeds; then the factory App opens a PR that
+#     files the shipped CHANGELOG lines under the new version (stamp-changelog).
 #   * A v* tag pushed by hand publishes exactly that version (it must match
 #     pyproject.toml) and cuts the Release from the CHANGELOG with the fleet's
 #     shared workflow.
@@ -108,6 +109,60 @@ jobs:
           cat "$RUNNER_TEMP/notes.md"
           gh release create "v$VERSION" --target "$GITHUB_SHA" \
             --title "v$VERSION" --notes-file "$RUNNER_TEMP/notes.md"
+
+  # File the shipped [Unreleased] lines under a dated section for the release.
+  # main is protected and the App cannot push to it, so this opens (or refreshes)
+  # one rolling PR as the factory App with auto-merge on. It touches CHANGELOG.md
+  # only - outside the path filter above, so its merge never releases again, and
+  # outside CODEOWNERS, so it lands once CI is green. The script restamps every
+  # tag main has not filed yet, so a run whose PR has not merged is caught up by
+  # the next one rather than racing it.
+  stamp-changelog:
+    needs: [pypi, auto-release]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mint a factory App token
+        id: token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.DPYC_BOT_APP_ID }}
+          private-key: ${{ secrets.DPYC_BOT_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0 # the tags decide what is still to stamp
+          token: ${{ steps.token.outputs.token }}
+      - name: Stamp CHANGELOG and open the PR
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          VERSION: ${{ needs.pypi.outputs.version }}
+          BRANCH: release/stamp-changelog
+          APP_SLUG: ${{ steps.token.outputs.app-slug }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/stamp_changelog.py
+          if git diff --quiet -- CHANGELOG.md; then
+            echo "::notice::CHANGELOG already filed through v$VERSION."
+            exit 0
+          fi
+          bot_id=$(gh api "users/${APP_SLUG}[bot]" --jq .id)
+          git config user.name "${APP_SLUG}[bot]"
+          git config user.email "$bot_id+${APP_SLUG}[bot]@users.noreply.github.com"
+          git switch -C "$BRANCH"
+          git commit -am "Stamp CHANGELOG through $VERSION"
+          git push --force origin "$BRANCH"
+          pr=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
+          if [ -z "$pr" ]; then
+            gh pr create --base main --head "$BRANCH" \
+              --title "Stamp CHANGELOG through $VERSION" \
+              --body "Files the [Unreleased] lines that shipped in released versions under dated sections, from the vX.Y.Z tags. Opened by the Release workflow; CHANGELOG.md only, so merging it publishes nothing."
+            pr=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number')
+          else
+            gh pr edit "$pr" --title "Stamp CHANGELOG through $VERSION"
+          fi
+          gh pr merge "$pr" --auto --squash
 
   # Hand-pushed tag: the Release comes from the CHANGELOG section for the tag.
   release:
