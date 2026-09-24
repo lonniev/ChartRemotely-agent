@@ -34,6 +34,8 @@ DEFAULTS: dict = {
     "operator_url": None,
     "agent_id": None,
     "agent_secret": None,
+    # This display's name at the operator, for "Where?" in the Shortcut.
+    "display_label": None,
     "token": None,
     "port": 8899,
 }

@@ -89,6 +89,22 @@ certificate to keep alive. Pairing alone does not start it: a display that is
 paired but has no `relay` running reports `connected: false` and silently
 ignores everything sent to it.
 
+## Voice
+
+"Hey Siri, ChartRemotely" asks three questions:
+
+1. **Which company?** — a spoken name or a spelled ticker.
+2. **What scale?** — a time frame mnemonic (below), or "as is".
+3. **Where?** — which display, by the name it was paired under. Say this
+   Mac's own name to stay here.
+
+The Shortcut talks to one Mac — the one that made it. When "Where?" names
+another of your displays, that Mac hands the command to the operator, which
+finds the display among yours by name only (case, spaces, hyphens,
+underscores and dots do not count: "Mac mini" is "mac-mini") and relays it.
+The reply you hear is the other display's. An unknown name is answered with
+the names you do have.
+
 ## Running it as a service
 
 `chartremotely setup` installs both transports as launchd agents
