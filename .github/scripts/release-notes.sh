@@ -2,9 +2,9 @@
 # Print release notes for an automatic release of VERSION ($1).
 #
 # A CHANGELOG section for VERSION wins, as it does for a tagged release.
-# Otherwise: the [Unreleased] lines added since the previous tag (so a line is
-# announced once, not on every release that follows it), then the subject of
-# every commit merged since that tag - on a squash-merged repo, the PR titles.
+# Otherwise: the section stamp_changelog.py will file this release under - the
+# [Unreleased] entries added since the previous tag, with their ### headings -
+# then the subject of every commit merged since that tag (the PR titles).
 set -euo pipefail
 
 version=$1
@@ -22,15 +22,8 @@ if [ -n "$notes" ]; then
   exit 0
 fi
 
-now=$(section Unreleased < CHANGELOG.md | sed '/^[[:space:]]*$/d')
-if [ -n "$previous" ]; then
-  before=$(git show "$previous:CHANGELOG.md" 2>/dev/null | section Unreleased | sed '/^[[:space:]]*$/d')
-  range="$previous..HEAD"
-else
-  before=""
-  range="HEAD"
-fi
-added=$(grep -vxF -f <(printf '%s\n' "$before") <<< "$now" || true)
+if [ -n "$previous" ]; then range="$previous..HEAD"; else range="HEAD"; fi
+added=$(python3 "$(dirname "$0")/stamp_changelog.py" --notes "$version")
 
 if [ -n "$added" ]; then
   printf '%s\n\n' "$added"

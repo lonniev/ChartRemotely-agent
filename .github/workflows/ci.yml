@@ -3,6 +3,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # The Release workflow's stamp job dispatches this on changelog/stamp: a PR its
+  # App token opens starts no pull_request run, and `test` is a required check.
+  workflow_dispatch:
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -14,3 +17,16 @@ jobs:
       - run: pip install -e ".[dev]"
       - run: ruff check chartremotely tests
       - run: pytest -q
+      - name: Entrypoint inspects (the check Horizon performs at build time)
+        run: |
+          [ -f fastmcp.json ] || { echo "no fastmcp.json — not a FastMCP deployment; skipping"; exit 0; }
+          ENTRY=$(python -c "import json;print(json.load(open('fastmcp.json'))['server'])")
+          case "$ENTRY" in *:*) TARGET="$ENTRY";; *) TARGET="$ENTRY:mcp";; esac
+          echo "inspecting $TARGET"
+          # Repos install either with pip (CLI on PATH) or with uv (CLI inside the
+          # project venv). Invoke it the way this repo resolves its own deps.
+          if [ -f uv.lock ] && command -v uv >/dev/null 2>&1; then
+            uv run fastmcp inspect -f fastmcp -o /tmp/server-info.json "$TARGET"
+          else
+            fastmcp inspect -f fastmcp -o /tmp/server-info.json "$TARGET"
+          fi
