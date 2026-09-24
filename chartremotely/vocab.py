@@ -17,6 +17,7 @@ Two rules the callers depend on:
 from __future__ import annotations
 
 from . import guilock, registry, resolve, scales, snapshot, symbol, timeframe, window
+from .answer import Answer
 
 ERR = "ERR "
 
@@ -48,6 +49,11 @@ def cmd_scale(spoken: str) -> str:
 
 
 def cmd_set(ticker: str, scale: str = "") -> str:
+    """Put a ticker on the chart; see :func:`set_chart`. Returns only the words."""
+    return set_chart(ticker, scale).reply
+
+
+def set_chart(ticker: str, scale: str = "") -> Answer:
     """Put a ticker on the chart, optionally at a given scale.
 
     Degrades deliberately: an unparseable scale leaves the chart alone and
@@ -56,11 +62,12 @@ def cmd_set(ticker: str, scale: str = "") -> str:
     """
     ticker = ticker.strip().replace(" ", "")
     if not ticker:
-        return ERR + "No symbol to show."
+        return Answer(ERR + "No symbol to show.")
     try:
         symbol.show(ticker)
     except Exception as exc:
-        return ERR + _short(exc)
+        return Answer(ERR + _short(exc))
+    shown = symbol.to_ticker(ticker)
 
     word = None
     if scale.strip() and scale.strip().lower() not in scales.AS_IS:
@@ -76,12 +83,12 @@ def cmd_set(ticker: str, scale: str = "") -> str:
         pass
 
     if word:
-        return f"Showing {ticker} at {word}. Good luck."
+        return Answer(f"Showing {ticker} at {word}. Good luck.", shown)
     try:
         _, current = timeframe.current()
-        return f"Showing {ticker} at {current}, as is. Good luck."
+        return Answer(f"Showing {ticker} at {current}, as is. Good luck.", shown)
     except Exception:
-        return f"Showing {ticker}. Good luck."
+        return Answer(f"Showing {ticker}. Good luck.", shown)
 
 
 def cmd_read() -> str:
@@ -103,7 +110,15 @@ def cmd_snapshot() -> str:
 
 
 def dispatch(request: str) -> str:
+    """Route one request and return only its words; see :func:`answer`."""
+    return answer(request).reply
+
+
+def answer(request: str) -> Answer:
     """Route one request. Anything unrecognised is treated as a company name.
+
+    The Answer carries the symbol a successful change put on the chart, so
+    the picture that follows is labelled from data, not from the reply text.
 
     The entire surface:
 
@@ -116,34 +131,34 @@ def dispatch(request: str) -> str:
     """
     request = (request or "").strip()
     if not request:
-        return ERR + "I didn't catch that."
+        return Answer(ERR + "I didn't catch that.")
 
     verb, _, rest = request.partition(" ")
     verb = verb.lower()
 
     if verb == "resolve":
-        return cmd_resolve(rest)
+        return Answer(cmd_resolve(rest))
     if verb == "scale":
-        return cmd_scale(rest)
+        return Answer(cmd_scale(rest))
     if verb == "read":
-        return _driving(cmd_read)
+        return _driving(lambda: Answer(cmd_read()))
     if verb == "snapshot":
-        return _driving(cmd_snapshot)
+        return _driving(lambda: Answer(cmd_snapshot()))
     if verb == "set":
         ticker, sep, scale = rest.partition("|")
-        return _driving(lambda: cmd_set(ticker, scale if sep else ""))
+        return _driving(lambda: set_chart(ticker, scale if sep else ""))
 
     # Bare name: resolve and show it.
     ticker = cmd_resolve(request)
     if ticker.startswith(ERR):
-        return ticker
-    return _driving(lambda: cmd_set(ticker))
+        return Answer(ticker)
+    return _driving(lambda: set_chart(ticker))
 
 
-def _driving(command) -> str:
+def _driving(command) -> Answer:
     """Run one command that drives the chart, never alongside another."""
     try:
         with guilock.driving():
             return command()
     except guilock.Busy as exc:
-        return ERR + str(exc)
+        return Answer(ERR + str(exc))
