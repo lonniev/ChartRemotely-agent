@@ -16,7 +16,7 @@ Two rules the callers depend on:
 
 from __future__ import annotations
 
-from . import push, registry, resolve, scales, snapshot, symbol, timeframe, window
+from . import guilock, registry, resolve, scales, snapshot, symbol, timeframe, window
 
 ERR = "ERR "
 
@@ -126,15 +126,24 @@ def dispatch(request: str) -> str:
     if verb == "scale":
         return cmd_scale(rest)
     if verb == "read":
-        return cmd_read()
+        return _driving(cmd_read)
     if verb == "snapshot":
-        return cmd_snapshot()
+        return _driving(cmd_snapshot)
     if verb == "set":
         ticker, sep, scale = rest.partition("|")
-        return push.after_change(cmd_set(ticker, scale if sep else ""))
+        return _driving(lambda: cmd_set(ticker, scale if sep else ""))
 
     # Bare name: resolve and show it.
     ticker = cmd_resolve(request)
     if ticker.startswith(ERR):
         return ticker
-    return push.after_change(cmd_set(ticker))
+    return _driving(lambda: cmd_set(ticker))
+
+
+def _driving(command) -> str:
+    """Run one command that drives the chart, never alongside another."""
+    try:
+        with guilock.driving():
+            return command()
+    except guilock.Busy as exc:
+        return ERR + str(exc)

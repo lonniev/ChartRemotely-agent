@@ -17,7 +17,7 @@ import secrets
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-from . import config
+from . import config, push
 from .vocab import dispatch
 
 
@@ -48,7 +48,7 @@ class Handler(BaseHTTPRequestHandler):
                 raw = str(json.loads(raw).get("cmd") or "").strip()
             except ValueError:
                 return self._reply(400, "ERR bad JSON")
-        self._reply(200, dispatch(raw))
+        self._answer(raw)
 
     def do_GET(self) -> None:
         parsed = urllib.parse.urlparse(self.path)
@@ -57,7 +57,13 @@ class Handler(BaseHTTPRequestHandler):
         query = urllib.parse.parse_qs(parsed.query)
         if not self._authorised((query.get("t") or [None])[0]):
             return self._reply(403, "ERR forbidden")
-        self._reply(200, dispatch((query.get("cmd") or [""])[0].strip()))
+        self._answer((query.get("cmd") or [""])[0].strip())
+
+    def _answer(self, request: str) -> None:
+        """Reply first; only then schedule the picture of a changed chart."""
+        reply = dispatch(request)
+        self._reply(200, reply)
+        push.after_reply(request, reply)
 
     def log_message(self, *args) -> None:
         """Silence. Requests carry spoken input; do not write it to a log."""

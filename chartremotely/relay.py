@@ -134,12 +134,16 @@ def run(operator_url: str | None = None, once: bool = False) -> None:
             continue
 
         if envelope.get("command"):
-            reply = execute(str(envelope["command"]))
+            command = str(envelope["command"])
+            reply = execute(command)
             try:
                 _post(f"{base}/agent/result",
                       {**credentials, "id": envelope.get("id"), "reply": reply},
                       timeout=20)
             except (urllib.error.URLError, TimeoutError, OSError):
                 pass          # the caller has already timed out and refunded
+            # After the reply, never before: the picture of a changed chart.
+            from . import push
+            push.after_reply(command, reply)
         if once:
             return

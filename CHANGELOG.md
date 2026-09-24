@@ -4,6 +4,11 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- The picture of a changed chart is taken only after the reply ("… Good luck.") has been sent, once the chart has been quiet for 1.5 s, and one picture covers a burst of changes. Every command that drives thinkorswim, and the picture, now holds one lock shared by the Siri listener and the relay, so they never overlap.
+
 ## [0.2.0] - 2026-09-24
 
 ### Added

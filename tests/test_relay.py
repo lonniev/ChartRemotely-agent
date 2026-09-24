@@ -141,7 +141,7 @@ def test_the_wire_logic_imports_without_the_macos_drivers():
     from pathlib import Path
 
     forbidden = {"Quartz", "AppKit", "ApplicationServices", "CoreFoundation"}
-    for name in ("relay", "resolve", "scales", "config", "registry", "snapshot", "push",
+    for name in ("relay", "resolve", "scales", "config", "registry", "snapshot", "push", "guilock",
                  "mcpclient", "keystore", "services", "tailnet", "shortcut", "setup"):
         tree = ast.parse(Path(f"chartremotely/{name}.py").read_text())
         for node in ast.walk(tree):
@@ -155,3 +155,23 @@ def test_the_wire_logic_imports_without_the_macos_drivers():
             # are the sanctioned escape hatch.
             if node.col_offset == 0:
                 assert not (names & forbidden), f"{name}.py imports {names & forbidden} at module scope"
+
+
+def test_the_picture_is_scheduled_only_after_the_result_is_posted(operator, monkeypatch):
+    """The reply goes out first; only then may a picture of the changed chart follow."""
+    from chartremotely import push
+    events = []
+    StubOperator.claimed = True
+    relay.pair(operator, on_code=lambda c: None)
+    StubOperator.commands.append({"id": "r2", "command": "set PLTR"})
+    monkeypatch.setattr(relay, "execute", lambda cmd: "Showing PLTR. Good luck.")
+    real_post = relay._post
+
+    def post(url, payload, timeout):
+        if url.endswith("/agent/result"):
+            events.append("result")
+        return real_post(url, payload, timeout)
+    monkeypatch.setattr(relay, "_post", post)
+    monkeypatch.setattr(push, "after_reply", lambda c, r: events.append(("picture", c)))
+    relay.run(once=True)
+    assert events == ["result", ("picture", "set PLTR")]
