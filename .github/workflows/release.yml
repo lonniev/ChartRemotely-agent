@@ -1,33 +1,119 @@
-# On a v* tag: publish the agent to PyPI through trusted publishing (OIDC, no
-# token secret), then cut the GitHub Release from the CHANGELOG with the
-# fleet's shared workflow.
+# Publish the agent to PyPI through trusted publishing (OIDC, no token secret).
+#
+# Two ways in, one publishing job - PyPI's trusted publisher is bound to THIS
+# file name and the `pypi` environment, so both must publish from here:
+#
+#   * A merge to main that changes the shipped package releases it on its own:
+#     the next patch after the newest vX.Y.Z tag, or the pyproject version if a
+#     PR raised it higher (that is how a minor or major release is asked for).
+#     The version is stamped into pyproject.toml inside the runner only - main
+#     is protected and CI never commits to it. The tag and the GitHub Release
+#     are made after the upload succeeds.
+#   * A v* tag pushed by hand publishes exactly that version (it must match
+#     pyproject.toml) and cuts the Release from the CHANGELOG with the fleet's
+#     shared workflow.
+#
+# A tag made by this workflow's GITHUB_TOKEN does not start another run, so an
+# automatic release is never published twice. Path filters are not applied to
+# tag pushes.
 name: Release
 
 on:
   push:
+    branches: [main]
+    paths:
+      - "chartremotely/**"
+      - "pyproject.toml"
     tags: ["v*"]
 
+# Two quick merges queue instead of racing to the same version number.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 permissions:
-  contents: write
+  contents: read
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - run: ruff check chartremotely tests
+      - run: pytest -q
+
   pypi:
+    needs: test
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
       id-token: write
       contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the tags decide the next version
       - uses: astral-sh/setup-uv@v6
-      - name: Tag matches pyproject.toml
-        run: |
-          want="v$(grep -m1 '^version' pyproject.toml | cut -d'"' -f2)"
-          [ "$GITHUB_REF_NAME" = "$want" ] || { echo "tag $GITHUB_REF_NAME != $want"; exit 1; }
-      - run: uv build
-      - uses: pypa/gh-action-pypi-publish@release/v1
 
+      - name: Decide the version
+        id: version
+        run: |
+          set -euo pipefail
+          declared=$(grep -m1 '^version' pyproject.toml | cut -d'"' -f2)
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            [ "$GITHUB_REF_NAME" = "v$declared" ] || { echo "tag $GITHUB_REF_NAME != v$declared"; exit 1; }
+            echo "version=$declared" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -n "$(git tag --points-at HEAD -l 'v*')" ]; then
+            echo "::notice::$(git tag --points-at HEAD -l 'v*') is already this commit; nothing to publish."
+            echo "version=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          version=$(.github/scripts/next-version.sh)
+          # Stamp the runner's copy only; nothing is committed.
+          sed -i "s/^version = \".*\"/version = \"$version\"/" pyproject.toml
+          grep -m1 '^version' pyproject.toml
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - if: steps.version.outputs.version != ''
+        run: uv build
+      - if: steps.version.outputs.version != ''
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  # Automatic release: tag the merged commit and write the Release notes.
+  auto-release:
+    needs: pypi
+    if: github.ref_type == 'branch' && needs.pypi.outputs.version != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Tag and release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.pypi.outputs.version }}
+        run: |
+          set -euo pipefail
+          .github/scripts/release-notes.sh "$VERSION" > "$RUNNER_TEMP/notes.md"
+          cat "$RUNNER_TEMP/notes.md"
+          gh release create "v$VERSION" --target "$GITHUB_SHA" \
+            --title "v$VERSION" --notes-file "$RUNNER_TEMP/notes.md"
+
+  # Hand-pushed tag: the Release comes from the CHANGELOG section for the tag.
   release:
     needs: pypi
+    if: github.ref_type == 'tag'
+    permissions:
+      contents: write
     uses: lonniev/dpyc-community/.github/workflows/github-release.yml@main
     secrets: inherit
