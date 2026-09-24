@@ -17,6 +17,8 @@
 				<string>Which company?</string>
 				<key>WFInputType</key>
 				<string>Text</string>
+				<key>WFAskActionAllowsMultilineText</key>
+				<false/>
 			</dict>
 		</dict>
 		<dict>
@@ -231,6 +233,8 @@
 				<string>Which company?</string>
 				<key>WFInputType</key>
 				<string>Text</string>
+				<key>WFAskActionAllowsMultilineText</key>
+				<false/>
 			</dict>
 		</dict>
 		<dict>
@@ -425,6 +429,8 @@
 				<string>Spell the symbol</string>
 				<key>WFInputType</key>
 				<string>Text</string>
+				<key>WFAskActionAllowsMultilineText</key>
+				<false/>
 			</dict>
 		</dict>
 		<dict>
@@ -753,6 +759,8 @@
 				<string>What scale?</string>
 				<key>WFInputType</key>
 				<string>Text</string>
+				<key>WFAskActionAllowsMultilineText</key>
+				<false/>
 			</dict>
 		</dict>
 		<dict>
@@ -967,6 +975,8 @@
 				<string>Which timeframe?</string>
 				<key>WFInputType</key>
 				<string>Text</string>
+				<key>WFAskActionAllowsMultilineText</key>
+				<false/>
 			</dict>
 		</dict>
 		<dict>
@@ -1052,6 +1062,8 @@
 				<string>Where?</string>
 				<key>WFInputType</key>
 				<string>Text</string>
+				<key>WFAskActionAllowsMultilineText</key>
+				<false/>
 			</dict>
 		</dict>
 		<dict>

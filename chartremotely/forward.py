@@ -57,11 +57,15 @@ def route(command: str, where: str, cfg: dict | None = None) -> str | None:
     agent_id, secret = cfg.get("agent_id"), cfg.get("agent_secret")
     if not (base and agent_id and secret):
         return ERR + "This Mac is not paired, so it can only drive its own chart."
-    wanted = where.strip()
+    # The Shortcut builds the command from this Mac's own replies, and every
+    # reply ends in a newline ("PLTR\n"), so a forwarded command arrives as
+    # "set PLTR\n | half\n". Run here, vocab strips that; the operator rightly
+    # refuses anything unprintable. Collapse the whitespace before it leaves.
+    wanted = " ".join(where.split())
     try:
         status, body = _post(f"{base}/agent/forward",
                              {"agent_id": agent_id, "secret": secret,
-                              "display": wanted, "cmd": command})
+                              "display": wanted, "cmd": " ".join(command.split())})
     except (urllib.error.URLError, TimeoutError, OSError):
         return ERR + "I could not reach the operator."
     if status == 200 and body.get("self"):
