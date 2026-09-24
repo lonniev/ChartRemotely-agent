@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.7] - 2026-09-24
+
 ### Changed
 - Right after "Where?", the voice Shortcut says "On it, requesting your chart now. Look at your screen or visit the website for the screen capture." without waiting to finish, so the request goes out while it speaks and the pause no longer sounds like a failure. Rebuild the Shortcut (`chartremotely setup`) to get it.
 
