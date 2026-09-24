@@ -56,6 +56,10 @@ def render(label: str, args: list[str], *, keep_alive: bool, log: Path) -> str:
 """
 
 
+class ServiceError(RuntimeError):
+    """launchd would not start a service; the reason is launchctl's own."""
+
+
 def _domain() -> str:
     return f"gui/{os.getuid()}"
 
@@ -65,17 +69,32 @@ def loaded(label: str) -> bool:
                           capture_output=True, check=False).returncode == 0
 
 
-def install(command: str) -> Path:
-    """Write and (re)start one service. Idempotent."""
+def install(command: str, settle: float = 10.0) -> Path:
+    """Write and (re)start one service. Idempotent.
+
+    ``bootout`` returns before launchd has let go of the label, and a
+    ``bootstrap`` in that window fails with "5: Input/output error" - which
+    left a re-run of setup with the listener stopped. So wait for the label to
+    be gone, and give ``bootstrap`` a few more tries while launchd settles.
+    """
     label = LABELS[command]
     path = AGENTS_DIR / f"{label}.plist"
     AGENTS_DIR.mkdir(parents=True, exist_ok=True)
     path.write_text(render(label, [executable(), command], keep_alive=True,
                            log=LOG_DIR / f"chartremotely-{command}.log"))
+    deadline = time.monotonic() + settle
     if loaded(label):
         subprocess.run(["launchctl", "bootout", f"{_domain()}/{label}"], capture_output=True, check=False)
-    subprocess.run(["launchctl", "bootstrap", _domain(), str(path)], check=True)
-    return path
+        while loaded(label) and time.monotonic() < deadline:
+            time.sleep(0.25)
+    while True:
+        ran = subprocess.run(["launchctl", "bootstrap", _domain(), str(path)],
+                             capture_output=True, text=True, check=False)
+        if ran.returncode == 0:
+            return path
+        if time.monotonic() >= deadline:
+            raise ServiceError(f"launchd would not start {label}: {(ran.stderr or ran.stdout).strip()[:200]}")
+        time.sleep(0.5)
 
 
 def probe_permissions(request: bool, out: Path, timeout: float = 30.0) -> dict:

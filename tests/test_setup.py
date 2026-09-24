@@ -72,6 +72,55 @@ def test_plist_values_are_escaped():
     assert plistlib.loads(text.encode())["ProgramArguments"] == ["/p<q>"]
 
 
+@pytest.fixture
+def fake_launchd(monkeypatch, tmp_path):
+    """A launchd that lets go of a label only after a few polls, as the real one does."""
+    state = {"loaded": True, "polls_until_gone": 3, "bootstrap_failures": 0, "calls": []}
+
+    def loaded(label):
+        if state["loaded"] and state.get("booted_out"):
+            state["polls_until_gone"] -= 1
+            if state["polls_until_gone"] <= 0:
+                state["loaded"] = False
+        return state["loaded"]
+
+    def run(args, **kwargs):
+        state["calls"].append(args[1])
+        if args[1] == "bootout":
+            state["booted_out"] = True
+            return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+        if state["loaded"] or state["bootstrap_failures"] > 0:
+            state["bootstrap_failures"] = max(0, state["bootstrap_failures"] - 1)
+            return types.SimpleNamespace(returncode=5, stdout="", stderr="Bootstrap failed: 5: Input/output error")
+        state["loaded"] = True
+        return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(services, "AGENTS_DIR", tmp_path)
+    monkeypatch.setattr(services, "loaded", loaded)
+    monkeypatch.setattr(services.subprocess, "run", run)
+    monkeypatch.setattr(services.time, "sleep", lambda s: None)
+    monkeypatch.setattr(services, "executable", lambda: "/usr/local/bin/chartremotely")
+    return state
+
+
+def test_reinstalling_a_running_service_waits_for_launchd_to_let_go(fake_launchd):
+    services.install("serve")
+    assert fake_launchd["calls"] == ["bootout", "bootstrap"]
+    assert fake_launchd["loaded"] is True
+
+
+def test_a_bootstrap_refused_while_launchd_settles_is_tried_again(fake_launchd):
+    fake_launchd["bootstrap_failures"] = 2
+    services.install("serve")
+    assert fake_launchd["calls"].count("bootstrap") == 3
+
+
+def test_a_bootstrap_that_never_succeeds_stops_setup_with_launchds_reason(fake_launchd, monkeypatch):
+    fake_launchd["bootstrap_failures"] = 10**6
+    with pytest.raises(services.ServiceError, match="Input/output error"):
+        services.install("serve", settle=0)
+
+
 # -- the Keychain and the clipboard ---------------------------------------------
 
 @pytest.fixture
