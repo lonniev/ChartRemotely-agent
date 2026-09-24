@@ -1068,6 +1068,17 @@
 		</dict>
 		<dict>
 			<key>WFWorkflowActionIdentifier</key>
+			<string>is.workflow.actions.speaktext</string>
+			<key>WFWorkflowActionParameters</key>
+			<dict>
+				<key>WFSpeakTextWait</key>
+				<false/>
+				<key>WFText</key>
+				<string>On it, requesting your chart now. Look at your screen or visit the website for the screen capture.</string>
+			</dict>
+		</dict>
+		<dict>
+			<key>WFWorkflowActionIdentifier</key>
 			<string>is.workflow.actions.downloadurl</string>
 			<key>WFWorkflowActionParameters</key>
 			<dict>

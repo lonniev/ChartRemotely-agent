@@ -184,7 +184,8 @@ def test_the_shortcut_asks_where_after_scale_and_sends_it_beside_cmd():
     actions = plistlib.loads(shortcut.template())["WFWorkflowActions"]
     prompts = [a["WFWorkflowActionParameters"].get("WFAskActionPrompt") for a in actions]
     assert prompts.index("Where?") > prompts.index("What scale?")
-    final = actions[prompts.index("Where?") + 1]["WFWorkflowActionParameters"]
+    final = next(a for a in actions[prompts.index("Where?"):]
+                 if a["WFWorkflowActionIdentifier"].endswith(".downloadurl"))["WFWorkflowActionParameters"]
     fields = {i["WFKey"]["Value"]["string"]: i["WFValue"]["Value"]
               for i in final["WFJSONValues"]["Value"]["WFDictionaryFieldValueItems"]}
     assert fields["cmd"]["string"] == "set ￼ | ￼", "the vocab grammar is unchanged"
