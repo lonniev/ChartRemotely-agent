@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- The voice Shortcut asks a third question, "Where?", after the scale, and sends the dictated answer verbatim as a separate JSON field `where` beside `cmd` (the vocab grammar is unchanged). Empty, this Mac's own display name or its agent_id runs here as before; any other name is forwarded through the operator's `/agent/forward` to that display of the same owner, and its reply is spoken. An unknown name answers `ERR No display named "<where>". Yours: A, B.` A forwarded command pushes no picture from this Mac; the target pushes its own. Names match ignoring case, spaces, hyphens, underscores and dots, exactly as the operator matches them. Needs ChartRemotely-mcp with `/agent/forward`; re-run `chartremotely setup` to get the new Shortcut.
+- `setup` remembers this display's name (`display_label`), so "Where? <this Mac>" never leaves the Mac. A Mac paired before this learns it the first time the operator answers that a name is its own.
+
 ### Changed
 - A merge to `main` that changes the package publishes the next patch release to PyPI by itself, after ruff and the tests pass, and tags it with a GitHub Release. Raising `version` in `pyproject.toml` asks for a minor or major release instead.
 - The pushed picture names the symbol the last chart-changing command of the burst put on screen, carried as data from the command (`vocab.answer` → `Answer.symbol`) to the push; the symbol field is read only when no command named one (it can be stale), so the operator can keep one picture per symbol. Left off when the symbol cannot be read or is not symbol-shaped. Needs ChartRemotely-mcp with per-symbol pictures; an older operator ignores the field.

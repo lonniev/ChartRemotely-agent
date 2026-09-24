@@ -17,7 +17,7 @@ import secrets
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-from . import config, push
+from . import config, forward, push
 from .vocab import answer
 
 
@@ -42,13 +42,16 @@ class Handler(BaseHTTPRequestHandler):
             return self._reply(403, "ERR forbidden")
         length = int(self.headers.get("Content-Length") or 0)
         raw = self.rfile.read(length).decode("utf-8", "replace").strip()
+        where = ""
         # Shortcuts posts JSON most cleanly; curl and scripts post raw text.
         if raw.startswith("{"):
             try:
-                raw = str(json.loads(raw).get("cmd") or "").strip()
-            except ValueError:
+                body = json.loads(raw)
+                raw = str(body.get("cmd") or "").strip()
+                where = str(body.get("where") or "").strip()
+            except (ValueError, AttributeError):
                 return self._reply(400, "ERR bad JSON")
-        self._answer(raw)
+        self._answer(raw, where)
 
     def do_GET(self) -> None:
         parsed = urllib.parse.urlparse(self.path)
@@ -57,10 +60,19 @@ class Handler(BaseHTTPRequestHandler):
         query = urllib.parse.parse_qs(parsed.query)
         if not self._authorised((query.get("t") or [None])[0]):
             return self._reply(403, "ERR forbidden")
-        self._answer((query.get("cmd") or [""])[0].strip())
+        self._answer((query.get("cmd") or [""])[0].strip(),
+                     (query.get("where") or [""])[0].strip())
 
-    def _answer(self, request: str) -> None:
-        """Reply first; only then schedule the picture of a changed chart."""
+    def _answer(self, request: str, where: str = "") -> None:
+        """Reply first; only then schedule the picture of a changed chart.
+
+        ``where`` names the display the command is for, as dictated. Another
+        display's command is forwarded and its reply spoken; that display
+        pushes its own picture, so none is scheduled here.
+        """
+        elsewhere = forward.route(request, where) if where and request else None
+        if elsewhere is not None:
+            return self._reply(200, elsewhere)
         result = answer(request)
         self._reply(200, result.reply)
         push.after_reply(request, result.reply, result.symbol)

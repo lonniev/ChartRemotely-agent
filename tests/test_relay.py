@@ -143,7 +143,7 @@ def test_the_wire_logic_imports_without_the_macos_drivers():
 
     forbidden = {"Quartz", "AppKit", "ApplicationServices", "CoreFoundation"}
     for name in ("relay", "resolve", "scales", "config", "registry", "snapshot", "push", "guilock",
-                 "mcpclient", "keystore", "services", "tailnet", "shortcut", "setup"):
+                 "mcpclient", "keystore", "services", "tailnet", "shortcut", "setup", "forward"):
         tree = ast.parse(Path(f"chartremotely/{name}.py").read_text())
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
