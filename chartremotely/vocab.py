@@ -16,7 +16,7 @@ Two rules the callers depend on:
 
 from __future__ import annotations
 
-from . import registry, resolve, scales, snapshot, symbol, timeframe, window
+from . import push, registry, resolve, scales, snapshot, symbol, timeframe, window
 
 ERR = "ERR "
 
@@ -131,10 +131,10 @@ def dispatch(request: str) -> str:
         return cmd_snapshot()
     if verb == "set":
         ticker, sep, scale = rest.partition("|")
-        return cmd_set(ticker, scale if sep else "")
+        return push.after_change(cmd_set(ticker, scale if sep else ""))
 
     # Bare name: resolve and show it.
     ticker = cmd_resolve(request)
     if ticker.startswith(ERR):
         return ticker
-    return cmd_set(ticker)
+    return push.after_change(cmd_set(ticker))
