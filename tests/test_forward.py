@@ -190,3 +190,13 @@ def test_the_shortcut_asks_where_after_scale_and_sends_it_beside_cmd():
     assert fields["cmd"]["string"] == "set ￼ | ￼", "the vocab grammar is unchanged"
     where = actions[prompts.index("Where?")]["WFWorkflowActionParameters"]["UUID"]
     assert fields["where"]["attachmentsByRange"]["{0, 1}"]["OutputUUID"] == where
+
+
+def test_a_forwarded_command_carries_no_newlines_from_the_shortcut(listener):
+    post, ran, pictures = listener
+    # The Shortcut splices this Mac's own replies ("PLTR\n", "half\n") into the command.
+    post({"cmd": "set PLTR\n | half\n", "where": "Office\n"})
+    _, sent = StubOperator.seen[-1]
+    assert sent["cmd"] == "set PLTR | half"
+    assert sent["display"] == "Office"
+    assert ran == [] and pictures == []

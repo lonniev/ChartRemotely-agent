@@ -43,6 +43,15 @@ def test_the_template_carries_placeholders_and_no_ones_address_or_token():
     assert not re.search(r"<string>[A-Za-z0-9_-]{40,}</string>", raw)
 
 
+def test_every_question_takes_one_line_so_return_answers_it():
+    actions = plistlib.loads(shortcut.template())["WFWorkflowActions"]
+    asks = [a["WFWorkflowActionParameters"] for a in actions
+            if a["WFWorkflowActionIdentifier"].endswith(".ask")]
+    assert asks, "the template asks nothing"
+    for ask in asks:
+        assert ask.get("WFAskActionAllowsMultilineText") is False, ask.get("WFAskActionPrompt")
+
+
 def test_filling_the_template_changes_the_placeholders_and_nothing_else():
     raw = shortcut.template()
     filled = shortcut.fill(raw, "https://mac.example.ts.net/chart", "T0KEN")
