@@ -147,6 +147,6 @@ def run(operator_url: str | None = None, once: bool = False) -> None:
             requestlog.request("relay", command, "", reply)
             # After the reply, never before: the picture of a changed chart.
             from . import push
-            push.after_reply(command, reply, result.symbol)
+            push.after_reply(command, reply, result.symbol, result.scale)
         if once:
             return

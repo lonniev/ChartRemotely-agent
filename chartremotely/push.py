@@ -3,9 +3,9 @@
 A chart changed by voice goes straight to this machine over the tailnet, so
 the operator never hears of it. Once a change is answered — after the reply
 ("… Good luck.") has been sent — one picture of the chart pane is pushed up so
-the patron's browser can offer it, labelled with the symbol the last command
-of the burst put on the chart (the symbol field is read only as a fallback:
-it can be stale). The operator keeps the newest picture per symbol,
+the patron's browser can offer it, labelled with the symbol and scale the
+last command of the burst put on the chart (the symbol field is read only as
+a fallback: it can be stale; the scale is never read back). The operator keeps the newest picture per symbol,
 encrypted, for an hour each.
 
 Three rules keep it out of the way:
@@ -44,10 +44,16 @@ _NOT_A_CHANGE = frozenset({"resolve", "scale", "read", "snapshot"})
 #: the same shape; anything else is left off rather than sent.
 SYMBOL = re.compile(r"^[A-Z0-9./^$-]{1,15}$")
 
+#: What a scale label may look like on the wire: the words a reply states
+#: ("half", "30 minutes", "1 day"). The operator checks the same shape.
+SCALE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 .:/-]{0,23}$")
+
 _state = threading.Condition()
 #: The symbol the last successful chart-changing command put on the chart.
 #: A burst's picture carries the LAST one; a change that names none keeps it.
 _named: str | None = None
+#: The scale the last chart-changing command stated; kept the same way.
+_scaled: str | None = None
 _due: float | None = None
 _worker: threading.Thread | None = None
 
@@ -66,12 +72,22 @@ def symbol_label(raw: object) -> str | None:
     return label if SYMBOL.match(label) else None
 
 
-def payload(cfg: dict, image: str, symbol: str | None = None) -> tuple[str, dict] | None:
+def scale_label(raw: object) -> str | None:
+    """The chart's scale as sent to the operator, or None when it is not scale-shaped."""
+    if not isinstance(raw, str):
+        return None
+    label = " ".join(raw.split())
+    return label if SCALE.match(label) else None
+
+
+def payload(cfg: dict, image: str, symbol: str | None = None,
+            scale: str | None = None) -> tuple[str, dict] | None:
     """Where to send a picture and what to send, or None when not paired.
 
     ``symbol`` is what the chart showed when the picture was taken; it is left
     out when unknown or not symbol-shaped, and the operator files the picture
-    under a plain "Chart".
+    under a plain "Chart". ``scale`` is the time frame the last change stated;
+    it is left out the same way.
     """
     base = (cfg.get("operator_url") or "").rstrip("/")
     agent_id, secret = cfg.get("agent_id"), cfg.get("agent_secret")
@@ -81,6 +97,9 @@ def payload(cfg: dict, image: str, symbol: str | None = None) -> tuple[str, dict
     label = symbol_label(symbol)
     if label:
         body["symbol"] = label
+    scaled = scale_label(scale)
+    if scaled:
+        body["scale"] = scaled
     return f"{base}/agent/snapshot", body
 
 
@@ -98,16 +117,19 @@ def _showing() -> str | None:
         return None
 
 
-def after_reply(request: str, reply: str, symbol: str | None = None) -> None:
+def after_reply(request: str, reply: str, symbol: str | None = None,
+                scale: str | None = None) -> None:
     """Call once a reply has been sent. Schedules a picture if the chart changed.
 
-    ``symbol`` is what the command put on the chart (vocab.Answer.symbol), when
-    it named one; a change that names none keeps the previous command's.
+    ``symbol`` and ``scale`` are what the command put on the chart
+    (vocab.Answer), when it named them; a change that names neither keeps the
+    previous command's.
     """
-    global _named
+    global _named, _scaled
     if changes_chart(request, reply):
         with _state:
             _named = symbol_label(symbol) or _named
+            _scaled = scale_label(scale) or _scaled
         schedule()
 
 
@@ -144,9 +166,9 @@ def push_now() -> None:
         with guilock.driving():
             image = snapshot.as_reply(snapshot.shrink(window.capture()))
             with _state:
-                label = _named
+                label, scaled = _named, _scaled
             label = label or _showing()
-        url, body = payload(cfg, image, label)
+        url, body = payload(cfg, image, label, scaled)
         relay._post(url, body, timeout=30)
     except Exception:  # noqa: BLE001, S110 - deliberate: see the module docstring
         pass

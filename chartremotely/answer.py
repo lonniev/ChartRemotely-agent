@@ -10,12 +10,14 @@ from typing import NamedTuple
 
 
 class Answer(NamedTuple):
-    """A command's reply, plus the symbol it put on the chart when it did.
+    """A command's reply, plus the symbol and scale it put on the chart when it did.
 
     ``symbol`` is set only by a successful chart change that named one; the
     picture of that change is labelled with it, so a label never depends on
-    how the reply happens to be worded.
+    how the reply happens to be worded. ``scale`` is the time frame the reply
+    states ("half", "30 minutes"), or None when the change could not tell.
     """
 
     reply: str
     symbol: str | None = None
+    scale: str | None = None

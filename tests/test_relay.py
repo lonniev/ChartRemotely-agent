@@ -165,7 +165,7 @@ def test_the_picture_is_scheduled_only_after_the_result_is_posted(operator, monk
     StubOperator.claimed = True
     relay.pair(operator, on_code=lambda c: None)
     StubOperator.commands.append({"id": "r2", "command": "set PLTR"})
-    monkeypatch.setattr(relay, "execute", lambda cmd: Answer("Showing PLTR. Good luck.", "PLTR"))
+    monkeypatch.setattr(relay, "execute", lambda cmd: Answer("Showing PLTR at half. Good luck.", "PLTR", "half"))
     real_post = relay._post
 
     def post(url, payload, timeout):
@@ -173,6 +173,6 @@ def test_the_picture_is_scheduled_only_after_the_result_is_posted(operator, monk
             events.append("result")
         return real_post(url, payload, timeout)
     monkeypatch.setattr(relay, "_post", post)
-    monkeypatch.setattr(push, "after_reply", lambda c, r, s: events.append(("picture", c, s)))
+    monkeypatch.setattr(push, "after_reply", lambda c, r, s, sc: events.append(("picture", c, s, sc)))
     relay.run(once=True)
-    assert events == ["result", ("picture", "set PLTR", "PLTR")]
+    assert events == ["result", ("picture", "set PLTR", "PLTR", "half")]
