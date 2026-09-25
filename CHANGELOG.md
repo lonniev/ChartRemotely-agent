@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.8] - 2026-09-25
+
 ### Added
 - The picture pushed after a chart change now carries the scale the reply stated ("half", "30 minutes") beside its symbol, so the operator can say which time frame a kept picture shows. A change that states no scale keeps the previous one; the timeframe popup is never opened just to learn it. Needs ChartRemotely-mcp with picture text summaries; an older operator ignores the field.
 
