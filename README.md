@@ -97,16 +97,33 @@ ignores everything sent to it.
 2. **What scale?** — a time frame mnemonic (below), or "as is".
 3. **Where?** — which display. Leave it blank to stay on this Mac.
 
-The Shortcut talks to one Mac — the one that made it. Any name said at
-"Where?" goes to the operator, which finds the display among yours and
-relays the command there (or back here, if the name is this Mac's). Names
-may be loose: for a display paired as "Mac mini", "mac-mini", "mini mac",
-"mini", "macm" and even "mack meeny" all work. The reply you hear is that
-display's. A name that could mean several displays is answered with them,
-and an unknown name with the names you do have.
+The Shortcut talks to one Mac — the one that made it. That Mac looks up the
+company and the scale itself (free: a table, never the chart), then acts as
+an ordinary patron of the operator: it calls the priced `chart_show_chart`
+tool with your npub, your sign-in token and the display named at "Where?"
+(this Mac when blank). A voice change costs what `chart_show_chart` costs.
+Siri answers within about three seconds — "Chart PLTR at half scale sent to
+Mac-mini. Good luck." — and the chart changes a moment later through that
+display's relay, which also takes its picture. Names may be loose: for a
+display paired as "Mac mini", "mac-mini", "mini mac", "mini", "macm" and even
+"mack meeny" all work. A refusal that comes back quickly — a balance too low,
+a display that is unknown or not answering — is spoken instead, in the
+operator's words. "Read" calls `chart_read_chart` and speaks what the chart
+shows.
+
+**Signing in.** The first `chartremotely setup` proves your npub by a Nostr
+DM: reply from your Nostr client, and choose a long `cache_duration` in the
+reply (e.g. `30 days`, or `unlimited`) so voice keeps working — left alone it
+lasts 2 hours. The token the operator returns is kept in this Mac's login
+Keychain ("ChartRemotely voice sign-in"), never in the config or a log; your
+nsec is never asked for. When it expires you hear "Your ChartRemotely sign-in
+expired. Answer the DM on your phone to renew." — a fresh DM is already on its
+way, and once you answer it (within about half an hour) the next command
+works again.
 
 Each command handled is logged as one line — time, the command's first word,
-the "Where?" as said, and the reply if it was an ERR — to
+the "Where?" as said, and the reply if it was an ERR — plus one line when its
+tool call ends (the tool, "Where?" and any refusal) — to
 `~/Library/Logs/chartremotely-serve.log` (voice) or `chartremotely-relay.log`
 (from the operator). Never a token, a secret or a picture.
 

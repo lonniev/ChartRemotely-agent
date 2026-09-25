@@ -17,8 +17,11 @@ import secrets
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-from . import config, forward, push, requestlog
+from . import config, patron, requestlog
 from .vocab import answer
+
+#: Verbs answered here, for free: they look something up and leave the chart alone.
+LOOKUPS = frozenset({"resolve", "scale"})
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -64,20 +67,23 @@ class Handler(BaseHTTPRequestHandler):
                      (query.get("where") or [""])[0].strip())
 
     def _answer(self, request: str, where: str = "") -> None:
-        """Reply first; only then schedule the picture of a changed chart.
+        """Answer a lookup here; ask the operator's priced tool for the rest.
 
-        ``where`` names the display the command is for, as dictated. Another
-        display's command is forwarded and its reply spoken; that display
-        pushes its own picture, so none is scheduled here.
+        ``resolve`` and ``scale`` are the Shortcut's free checks before it
+        asks for a change: they read a table, never the chart. Everything
+        else is a patron's tool call (see :mod:`patron`) - ``where`` names the
+        display as dictated, blank meaning this Mac. The reply is the
+        hand-off, spoken at once; the chart changes after, through a relay,
+        which also takes its picture.
         """
-        elsewhere = forward.route(request, where) if where and request else None
-        if elsewhere is not None:
-            self._reply(200, elsewhere)
-            return requestlog.request("serve", request, where, elsewhere)
-        result = answer(request)
-        self._reply(200, result.reply)
-        requestlog.request("serve", request, where, result.reply)
-        push.after_reply(request, result.reply, result.symbol, result.scale)
+        if request.partition(" ")[0].lower() in LOOKUPS:
+            reply = answer(request).reply
+        elif request:
+            reply = patron.send(request, where)
+        else:
+            reply = "ERR I didn't catch that."
+        self._reply(200, reply)
+        requestlog.request("serve", request, where, reply)
 
     def log_message(self, *args) -> None:
         """Silence the stock access log: its request line can carry ``?t=<token>``.

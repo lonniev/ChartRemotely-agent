@@ -52,15 +52,14 @@ def test_every_question_takes_one_line_so_return_answers_it():
         assert ask.get("WFAskActionAllowsMultilineText") is False, ask.get("WFAskActionPrompt")
 
 
-def test_the_shortcut_says_it_is_on_it_while_the_request_goes_out():
+def test_the_shortcut_sends_right_after_where_and_speaks_only_the_reply():
     actions = plistlib.loads(shortcut.template())["WFWorkflowActions"]
     kinds = [a["WFWorkflowActionIdentifier"].rsplit(".", 1)[-1] for a in actions]
     where = next(i for i, a in enumerate(actions)
                  if a["WFWorkflowActionParameters"].get("CustomOutputName") == "Where")
-    assert kinds[where + 1:where + 3] == ["speaktext", "downloadurl"]
-    ack = actions[where + 1]["WFWorkflowActionParameters"]
-    assert ack["WFSpeakTextWait"] is False, "waiting for the words would delay the chart"
-    assert ack["WFText"].startswith("On it, requesting your chart now.")
+    assert kinds[where + 1:] == ["downloadurl", "speaktext"], "the reply is instant; nothing precedes it"
+    said = actions[-1]["WFWorkflowActionParameters"]["WFText"]["Value"]["attachmentsByRange"]["{0, 1}"]
+    assert said["OutputUUID"] == actions[where + 1]["WFWorkflowActionParameters"]["UUID"]
 
 
 def test_filling_the_template_changes_the_placeholders_and_nothing_else():
@@ -149,6 +148,7 @@ def fake_security(monkeypatch):
     mod = types.SimpleNamespace(
         kSecClass="class", kSecClassInternetPassword="inet", kSecAttrServer="server",
         kSecAttrAccount="account", kSecAttrLabel="label", kSecValueData="data",
+        kSecClassGenericPassword="generic", kSecAttrService="service",
         SecItemAdd=lambda q, _: calls["add"].append(q) or (calls.get("status", 0), None),
         SecItemUpdate=lambda q, attrs: calls["update"].append((q, attrs)) or 0,
     )
@@ -169,6 +169,15 @@ def test_an_existing_entry_is_updated_not_duplicated(fake_security):
     keystore.save(NPUB, NSEC)
     [(query, attrs)] = fake_security["update"]
     assert attrs == {"data": NSEC.encode()} and "data" not in query
+
+
+def test_the_voice_sign_in_goes_into_its_own_keychain_item_and_nowhere_else(fake_security):
+    keystore.save_token(NPUB, "seven-amber-door")
+    [query] = fake_security["add"]
+    assert query["data"] == b"seven-amber-door"
+    assert all("seven-amber-door" not in str(v) for k, v in query.items() if k != "data")
+    assert query["class"] == "generic" and query["service"] == keystore.TOKEN_SERVICE
+    assert query["account"] == NPUB and "server" not in query, "never mixed with a saved key"
 
 
 def test_the_clipboard_is_fed_on_a_pipe_never_a_command_line(monkeypatch):
@@ -210,6 +219,7 @@ def test_an_existing_npub_is_proven_by_dm_and_no_key_is_asked_for():
     assert token == "seven-amber-door"
     assert [t for t, _ in client.calls] == ["chart_request_npub_proof", "chart_receive_npub_proof"]
     assert any("seven-amber-door" in s for s in said), "the human sees the code to compare"
+    assert any("cache_duration" in s and "unlimited" in s for s in said), "a longer sign-in is offered"
     assert not any("nsec" in q.lower() for q in asked)
 
 
@@ -265,7 +275,7 @@ def test_a_made_key_never_reaches_the_agents_config(monkeypatch, tmp_path):
     monkeypatch.setattr(shortcut, "build", lambda url, token: built.append(url) or tmp_path / "x.shortcut")
     monkeypatch.setattr(setup.subprocess, "run", lambda *a, **k: None)
 
-    answers = iter(["3", "Desk"])
+    answers = iter(["3", "Desk", "n"])
     said = []
     assert setup.run(ask=lambda q: next(answers), say=said.append) == 0
 
@@ -275,3 +285,49 @@ def test_a_made_key_never_reaches_the_agents_config(monkeypatch, tmp_path):
     assert kept == [NPUB], "the made key is handed to the human's Keychain"
     assert built == ["https://mac.example.ts.net/chart"]
     assert not any(NSEC in s for s in said), "the key is never printed"
+
+
+def _stand_in_the_mac(monkeypatch, tmp_path, answers):
+    monkeypatch.setattr(config, "CONFIG_DIR", tmp_path)
+    monkeypatch.setattr(config, "CONFIG_PATH", tmp_path / "config.json")
+    monkeypatch.setattr(relay, "open_code", lambda base: ("ABC234", 900.0))
+    monkeypatch.setattr(relay, "collect", lambda base, code, exp: config.update(
+        operator_url=base, agent_id="a1", agent_secret="agent-secret"))
+    monkeypatch.setattr(mcpclient, "Client", lambda base: StubClient(answers))
+    from chartremotely import tailnet
+    monkeypatch.setattr(tailnet, "status", lambda: {"Self": {"DNSName": "mac.example.ts.net."}})
+    monkeypatch.setattr(tailnet, "serve", lambda port: None)
+    monkeypatch.setattr(services, "install", lambda command: None)
+    monkeypatch.setattr(services, "probe_permissions",
+                        lambda request, out: {"accessibility": True, "screen_recording": True})
+    monkeypatch.setattr(shortcut, "build", lambda url, token: tmp_path / "x.shortcut")
+    monkeypatch.setattr(setup.subprocess, "run", lambda *a, **k: None)
+    vault = {}
+    monkeypatch.setattr(keystore, "save_token", lambda npub, token: vault.__setitem__(npub, token))
+    monkeypatch.setattr(keystore, "load_token", lambda npub: vault.get(npub))
+    return vault
+
+
+def test_a_dm_proven_owner_keeps_the_sign_in_in_the_keychain_not_the_config(monkeypatch, tmp_path):
+    vault = _stand_in_the_mac(monkeypatch, tmp_path, {
+        "chart_request_npub_proof": {"dpop_token": "seven-amber-door"},
+        "chart_receive_npub_proof": {"success": True, "dpop_token": "seven-amber-door"},
+        "chart_pair_agent": {"ok": True, "display": "Desk", "agent_id": "a1"}})
+    answers = iter(["1", NPUB, "", "Desk"])
+    said = []
+    assert setup.run(ask=lambda q: next(answers), say=said.append) == 0
+    assert vault == {NPUB: "seven-amber-door"}
+    stored = (tmp_path / "config.json").read_text()
+    assert "seven-amber-door" not in stored
+    assert json.loads(stored)["owner_npub"] == NPUB
+
+
+def test_an_already_paired_mac_is_signed_in_for_voice_by_dm(monkeypatch, tmp_path):
+    vault = _stand_in_the_mac(monkeypatch, tmp_path, {
+        "chart_request_npub_proof": {"dpop_token": "seven-amber-door"},
+        "chart_receive_npub_proof": {"success": True, "dpop_token": "seven-amber-door"}})
+    config.update(operator_url="https://op.test", agent_id="a1", agent_secret="agent-secret")
+    answers = iter([NPUB, "y", ""])
+    assert setup.run(ask=lambda q: next(answers), say=lambda s: None) == 0
+    assert vault == {NPUB: "seven-amber-door"}
+    assert "seven-amber-door" not in (tmp_path / "config.json").read_text()
