@@ -22,7 +22,7 @@ from __future__ import annotations
 import time
 
 import Quartz
-from AppKit import NSWorkspace
+from AppKit import NSRunningApplication, NSWorkspace
 from ApplicationServices import (
     AXUIElementCopyActionNames,
     AXUIElementCopyAttributeValue,
@@ -57,11 +57,25 @@ class NotRunning(RuntimeError):
     """thinkorswim is not running."""
 
 
+def app_for(pid: int):
+    """The running application with ``pid``, looked up now; None if gone.
+
+    Never from ``NSWorkspace.runningApplications()``: that list only
+    refreshes on a run loop, which the listener and relay never spin, so an
+    app launched (or quit) after they started is missing from it (or lingers).
+    """
+    return NSRunningApplication.runningApplicationWithProcessIdentifier_(pid)
+
+
 def running_app():
-    for a in NSWorkspace.sharedWorkspace().runningApplications():
-        if APP_NAME.lower() in (a.localizedName() or "").lower():
-            return a
-    raise NotRunning(f"{APP_NAME} is not running")
+    """thinkorswim, found through the window server's live list of windows."""
+    for w in Quartz.CGWindowListCopyWindowInfo(
+            Quartz.kCGWindowListOptionAll, Quartz.kCGNullWindowID) or []:
+        if APP_NAME.lower() in (w.get("kCGWindowOwnerName") or "").lower():
+            app = app_for(w["kCGWindowOwnerPID"])
+            if app is not None:
+                return app
+    raise NotRunning(f"{APP_NAME} is not open on this Mac")
 
 
 def handle(app=None):

@@ -15,66 +15,98 @@ import time
 from pathlib import Path
 
 import Quartz
-from AppKit import NSWorkspace
 
-from . import ax, config, layout, snapshot, symbol
+from . import ax, config, layout, screen, snapshot, symbol
+
+#: NSApplicationActivateAllWindows | NSApplicationActivateIgnoringOtherApps:
+#: bring every thinkorswim window forward, even when another app is in front.
+ACTIVATE = 1 | 2
+#: Longest wait for the chart window to reach the screen after being raised.
+ON_SCREEN_WAIT = 2.0
+
+
+class NotOnScreen(RuntimeError):
+    """The chart window could not be brought on screen."""
+
+
+def _on_screen() -> list[dict]:
+    return list(Quartz.CGWindowListCopyWindowInfo(
+        Quartz.kCGWindowListOptionOnScreenOnly, Quartz.kCGNullWindowID) or [])
 
 
 def _frame(pid: int) -> dict | None:
-    """Bounds of the largest on-screen thinkorswim window."""
-    best, best_area = None, -1
-    for w in Quartz.CGWindowListCopyWindowInfo(
-            Quartz.kCGWindowListOptionOnScreenOnly, Quartz.kCGNullWindowID):
-        if w.get("kCGWindowOwnerPID") != pid:
-            continue
-        b = w.get("kCGWindowBounds") or {}
-        area = b.get("Width", 0) * b.get("Height", 0)
-        if area > best_area:
-            best, best_area = w, area
-    return best
+    """The largest on-screen thinkorswim window."""
+    return screen.largest(_on_screen(), pid)
 
 
-def _overlaps(a: dict, b: dict) -> bool:
-    return not (a.get("X", 0) + a.get("Width", 0) <= b.get("X", 0)
-                or a.get("X", 0) >= b.get("X", 0) + b.get("Width", 0)
-                or a.get("Y", 0) + a.get("Height", 0) <= b.get("Y", 0)
-                or a.get("Y", 0) >= b.get("Y", 0) + b.get("Height", 0))
+def _ax_frame(win) -> screen.Frame | None:
+    p, s = ax.position(win), ax.size(win)
+    return (p.x, p.y, s.width, s.height) if p and s else None
 
 
-def clear(app=None) -> list[str]:
-    """Hide every ordinary app overlapping the chart, then raise it.
+def present(app=None) -> screen.Presented:
+    """Put the chart window in front of the viewer, before anything drives it.
 
-    Only regular apps are touched - system overlays keep permanent
-    full-screen windows and are neither hideable nor actually in the way.
+    Unhides thinkorswim, brings it forward, un-minimises and raises the chart
+    window (the one titled ``window_prefix``, which every driver works in),
+    waits until it is actually on screen - activation also switches to its
+    Space when it is full screen elsewhere - then hides the ordinary apps
+    overlapping it. Only regular apps are ever hidden: system overlays keep
+    permanent full-screen windows and are neither hideable nor in the way.
+
+    Run inside the chart lock, like every command that drives the chart.
     """
     app = app or ax.running_app()
     pid = app.processIdentifier()
-    target = _frame(pid)
+    ax_app = ax.handle(app)
+    # Read from the process itself: NSRunningApplication's isHidden/isActive
+    # only refresh on a run loop, which the listener and relay never spin.
+    unhid = bool(ax.attr(ax_app, "AXHidden"))
+    raised = not ax.attr(ax_app, "AXFrontmost")
+    if unhid:
+        app.unhide()
+    app.activateWithOptions_(ACTIVATE)
+
+    prefix = config.load()["window_prefix"]
+    win = screen.wait_for(lambda: ax.window(ax_app, prefix), timeout=ON_SCREEN_WAIT)
+    if win is None:
+        raise NotOnScreen(f"no thinkorswim window titled {prefix!r}")
+    unminimized = bool(ax.attr(win, "AXMinimized"))
+    if unminimized:
+        ax.set_attr(win, "AXMinimized", False)
+    ax.perform(win, "AXRaise")
+    ax.set_attr(win, "AXMain", True)
+    ax.set_attr(win, "AXFocused", True)
+
+    def arrived():
+        frame = _ax_frame(win)
+        return frame and screen.showing(_on_screen(), pid, frame)
+
+    target = screen.wait_for(arrived, timeout=ON_SCREEN_WAIT)
     if target is None:
-        return []
-    bounds = target["kCGWindowBounds"]
+        raise NotOnScreen("the chart window did not come on screen")
 
-    regular = {a.processIdentifier(): a
-               for a in NSWorkspace.sharedWorkspace().runningApplications()
-               if a.activationPolicy() == 0 and a.processIdentifier() != pid}
+    hid = _uncover(pid, target["kCGWindowBounds"])
+    app.activateWithOptions_(ACTIVATE)
+    return screen.Presented(unhid=unhid, unminimized=unminimized,
+                            raised=raised or unminimized, hid=hid)
 
-    covering = {w["kCGWindowOwnerPID"]
-                for w in Quartz.CGWindowListCopyWindowInfo(
-                    Quartz.kCGWindowListOptionOnScreenOnly, Quartz.kCGNullWindowID)
-                if w.get("kCGWindowOwnerPID") in regular
-                and w.get("kCGWindowLayer", 0) >= 0
-                and _overlaps(w.get("kCGWindowBounds") or {}, bounds)}
 
+def _uncover(pid: int, bounds: dict) -> tuple[str, ...]:
+    """Hide every ordinary app with a window over ``bounds``; their names."""
+    windows = _on_screen()
+    apps = {p: ax.app_for(p) for p in {w.get("kCGWindowOwnerPID") for w in windows} if p}
+    regular = {p: a for p, a in apps.items() if a is not None and a.activationPolicy() == 0}
     hidden = []
-    for p in covering:
+    # An app with a window on screen is not hidden, whatever a cached
+    # isHidden says; see present().
+    for p in screen.covering(windows, bounds, pid, regular):
         a = regular[p]
-        if not a.isHidden():
-            a.hide()
-            hidden.append(a.localizedName() or str(p))
+        a.hide()
+        hidden.append(a.localizedName() or str(p))
     if hidden:
         time.sleep(0.4)
-    app.activateWithOptions_(2)
-    return sorted(hidden)
+    return tuple(sorted(hidden))
 
 
 def capture(app=None) -> bytes:

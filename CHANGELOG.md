@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- Before any command drives the chart (set, read, snapshot - by voice or relayed), thinkorswim is brought in front first: unhidden, activated, its chart window un-minimised and raised, and - once it is actually on screen - the ordinary apps covering it are hidden. Only then is it navigated. A chart that was hidden or minimised is no longer driven blind, and a covered one is uncovered before, not after, the change. What it took is logged ("unhid; raised; hid Safari"), never spoken. When thinkorswim is not running the reply is "ERR thinkorswim is not open on this Mac".
+- thinkorswim and the apps covering it are found through the window server's live list, not NSWorkspace's, which a listener or relay (no run loop) never refreshes - so an app opened after they started is seen.
+
 ## [0.2.9] - 2026-09-25
 
 ### Changed

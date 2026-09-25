@@ -51,3 +51,12 @@ def outcome(source: str, tool: str, where: str, error: str | None) -> None:
         print(" ".join(parts), file=sys.stderr, flush=True)
     except (OSError, ValueError):
         pass
+
+
+def note(source: str, text: str) -> None:
+    """One free-form line, e.g. what it took to bring the chart in front. Never raises."""
+    try:
+        print(f"{time.strftime('%Y-%m-%dT%H:%M:%S%z')} {source} {_clean(text, ERR_MAX)}",
+              file=sys.stderr, flush=True)
+    except (OSError, ValueError):
+        pass
