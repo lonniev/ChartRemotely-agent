@@ -16,7 +16,7 @@ Two rules the callers depend on:
 
 from __future__ import annotations
 
-from . import guilock, registry, resolve, scales, snapshot, symbol, timeframe, window
+from . import guilock, registry, requestlog, resolve, scales, snapshot, symbol, timeframe, window
 from .answer import Answer
 
 ERR = "ERR "
@@ -24,6 +24,21 @@ ERR = "ERR "
 
 def _short(text: str, limit: int = 120) -> str:
     return str(text).splitlines()[0][:limit] if text else "something went wrong"
+
+
+def _present() -> str | None:
+    """Get the chart in front of the viewer before driving it; see window.present.
+
+    Returns an ERR reply when it cannot be, else None. What it took (unhid,
+    raised, which apps it hid) goes to the log, never into the spoken reply.
+    """
+    try:
+        done = window.present()
+    except Exception as exc:
+        return ERR + _short(exc)
+    if done:
+        requestlog.note("present", str(done))
+    return None
 
 
 def cmd_resolve(spoken: str) -> str:
@@ -63,6 +78,9 @@ def set_chart(ticker: str, scale: str = "") -> Answer:
     ticker = ticker.strip().replace(" ", "")
     if not ticker:
         return Answer(ERR + "No symbol to show.")
+    refused = _present()
+    if refused:
+        return Answer(refused)
     try:
         symbol.show(ticker)
     except Exception as exc:
@@ -76,12 +94,6 @@ def set_chart(ticker: str, scale: str = "") -> Answer:
         except Exception:
             word = None
 
-    # Uncover the chart: a voice answer is only useful if the screen shows it.
-    try:
-        window.clear()
-    except Exception:
-        pass
-
     if word:
         return Answer(f"Showing {ticker} at {word}. Good luck.", shown, word)
     try:
@@ -93,6 +105,9 @@ def set_chart(ticker: str, scale: str = "") -> Answer:
 
 def cmd_read() -> str:
     """Report the chart's current symbol and scale."""
+    refused = _present()
+    if refused:
+        return refused
     try:
         ticker = symbol.current()
         _, word = timeframe.current()
@@ -103,6 +118,9 @@ def cmd_read() -> str:
 
 def cmd_snapshot() -> str:
     """A picture of the chart pane, so a caller far away can see it."""
+    refused = _present()
+    if refused:
+        return refused
     try:
         return snapshot.as_reply(snapshot.shrink(window.capture()))
     except Exception as exc:
