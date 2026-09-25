@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.9] - 2026-09-25
+
 ### Changed
 - Voice commands are ordinary patron tool calls. The listener calls the operator's existing priced `chart_show_chart` (and `chart_read_chart` for "read") with the display owner's `npub` and `dpop_token`, and `display` as dictated - blank "Where?" is this Mac's agent_id. The operator relays the change and this (or the named) Mac's relay changes the chart and takes its picture; the listener never drives the chart. Only the Shortcut's free `resolve` and `scale` lookups are answered locally. "snapshot" is not bought by voice (a picture cannot be spoken).
 - Siri answers within about 3 seconds: an early refusal (sign-in expired, balance too low, unknown or silent display) is spoken; otherwise the hand-off, "Chart PLTR at half scale sent to Mac-mini. Good luck." ("this Mac" when "Where?" was blank; no scale for "as is"). The call finishes in the background and its outcome is logged - tool, "Where?" and any refusal, never the token.
