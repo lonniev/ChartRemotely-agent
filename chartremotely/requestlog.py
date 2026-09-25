@@ -39,3 +39,15 @@ def request(source: str, command: str, where: str, reply: str) -> None:
         print(line(source, command, where, reply), file=sys.stderr, flush=True)
     except (OSError, ValueError):
         pass
+
+
+def outcome(source: str, tool: str, where: str, error: str | None) -> None:
+    """One line for how a background tool call ended: the tool, the "Where?",
+    and the refusal when there was one. Never its arguments or the sign-in."""
+    parts = [time.strftime("%Y-%m-%dT%H:%M:%S%z"), source, f"tool={_clean(tool or '-', 48)}",
+             f"where={_clean(where or '', WHERE_MAX)!r}",
+             f"error={_clean(error, ERR_MAX)!r}" if error else "ok"]
+    try:
+        print(" ".join(parts), file=sys.stderr, flush=True)
+    except (OSError, ValueError):
+        pass

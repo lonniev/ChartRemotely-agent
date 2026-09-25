@@ -7,12 +7,14 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Changed
-- Every voice chart change goes to the operator, which prices it like any tool call - blank "Where?" included (it names this Mac by its agent_id). The listener no longer drives the chart: it answers only the Shortcut's free `resolve` and `scale` lookups itself, and the chart changes through the relay, which also takes the picture. Needs ChartRemotely-mcp with the priced, 202-answering `/agent/forward`.
-- Siri answers the moment the operator accepts the change, instead of waiting for the chart: "Chart PLTR at half scale sent to Mac-mini. Good luck." ("this Mac" when "Where?" was blank; no scale when it was "as is"). An immediate refusal - unknown name, insufficient balance, offline display - is spoken instead.
-- The voice Shortcut no longer says "On it, requesting your chart now…" before sending; the reply is instant, so it speaks only that. Rebuild the Shortcut (`chartremotely setup`) to get it.
+- Voice commands are ordinary patron tool calls. The listener calls the operator's existing priced `chart_show_chart` (and `chart_read_chart` for "read") with the display owner's `npub` and `dpop_token`, and `display` as dictated - blank "Where?" is this Mac's agent_id. The operator relays the change and this (or the named) Mac's relay changes the chart and takes its picture; the listener never drives the chart. Only the Shortcut's free `resolve` and `scale` lookups are answered locally. "snapshot" is not bought by voice (a picture cannot be spoken).
+- Siri answers within about 3 seconds: an early refusal (sign-in expired, balance too low, unknown or silent display) is spoken; otherwise the hand-off, "Chart PLTR at half scale sent to Mac-mini. Good luck." ("this Mac" when "Where?" was blank; no scale for "as is"). The call finishes in the background and its outcome is logged - tool, "Where?" and any refusal, never the token.
+- An expired sign-in is spoken ("Your ChartRemotely sign-in expired. Answer the DM on your phone to renew.") and renewed in the background: one `chart_request_npub_proof` DM at a time, then `chart_receive_npub_proof` on a slowing schedule for about half an hour; the new token goes back into the Keychain.
+- `chartremotely setup` keeps the DM proof's `dpop_token` as the voice sign-in, in the login Keychain (generic password "ChartRemotely voice sign-in", one per npub), and the owner's npub in the config as `owner_npub`. Its DM prompt suggests replying with a longer `cache_duration` (e.g. 30 days, or unlimited; default 2 hours). A Mac paired with a saved or made key, or already paired, is offered the DM sign-in too. The nsec is never asked for or stored.
+- The voice Shortcut no longer says "On it, requesting your chart now…" before sending; it speaks only the listener's reply. Re-run `chartremotely setup` for the sign-in and the new Shortcut.
 
 ### Removed
-- `forward.is_here` and `forward.route`, and the listener's local chart path; `forward.send` replaces them.
+- `forward.py`: the listener no longer uses the operator's `/agent/forward`, and no longer runs a chart change on this Mac itself.
 
 ## [0.2.8] - 2026-09-25
 

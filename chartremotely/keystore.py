@@ -1,4 +1,8 @@
-"""Keep a patron's Nostr key for the patron, never for this agent.
+"""Keep a patron's secrets in their login Keychain, never in this agent's files.
+
+Two kinds, never mixed: the Nostr key ``setup`` may make for the human, and
+the voice sign-in - the ``dpop_token`` the operator returns once the owner
+has proven their npub by DM - which the listener passes on each priced call.
 
 A key made by ``setup`` belongs to the human. It goes into their login
 Keychain as an internet password for the ChartRemotely site, and it is
@@ -8,8 +12,8 @@ tool cannot write a synchronizable Keychain item itself (that needs an
 entitled app: ``errSecMissingEntitlement``), which is why Safari does the
 syncing.
 
-Nothing here writes the key to the agent's config, a log, a URL or a
-command line. It travels as ``kSecValueData`` or on a pipe, and nowhere else.
+Nothing here writes a key or a token to the agent's config, a log, a URL or
+a command line. Each travels as ``kSecValueData`` or on a pipe, and nowhere else.
 """
 
 from __future__ import annotations
@@ -19,6 +23,8 @@ import threading
 
 SERVER = "chartremotely.tollbooth-dpyc.com"
 LABEL = "ChartRemotely — Nostr key"
+#: The voice sign-in is a generic password under this service, one per npub.
+TOKEN_SERVICE = "ChartRemotely voice sign-in"
 CLIPBOARD_SECONDS = 60
 
 ERR_DUPLICATE = -25299
@@ -43,15 +49,43 @@ def item_query(npub: str) -> dict:
             S.kSecAttrAccount: npub}
 
 
+def _upsert(query: dict, label: str, secret: bytes, what: str) -> None:
+    """Add one item, or replace the secret of the one already there."""
+    S = _security()
+    status = S.SecItemAdd({**query, S.kSecAttrLabel: label, S.kSecValueData: secret}, None)[0]
+    if status == ERR_DUPLICATE:
+        status = S.SecItemUpdate(query, {S.kSecValueData: secret})
+    if status != 0:
+        raise KeystoreError(f"the Keychain refused to save the {what} (status {status})")
+
+
 def save(npub: str, nsec: str) -> None:
     """Store (or replace) the patron's key in their login Keychain."""
+    _upsert(item_query(npub), LABEL, nsec.encode(), "key")
+
+
+def token_query(npub: str) -> dict:
+    """The attributes that name one npub's voice sign-in. The token is never among them."""
     S = _security()
-    secret = nsec.encode()
-    status = S.SecItemAdd({**item_query(npub), S.kSecAttrLabel: LABEL, S.kSecValueData: secret}, None)[0]
-    if status == ERR_DUPLICATE:
-        status = S.SecItemUpdate(item_query(npub), {S.kSecValueData: secret})
+    return {S.kSecClass: S.kSecClassGenericPassword,
+            S.kSecAttrService: TOKEN_SERVICE,
+            S.kSecAttrAccount: npub}
+
+
+def save_token(npub: str, token: str) -> None:
+    """Store (or replace) the voice sign-in for ``npub``."""
+    _upsert(token_query(npub), TOKEN_SERVICE, token.encode(), "sign-in")
+
+
+def load_token(npub: str) -> str | None:
+    """The voice sign-in for ``npub``; None when there is none yet."""
+    S = _security()
+    status, data = S.SecItemCopyMatching({**token_query(npub), S.kSecReturnData: True}, None)
+    if status == ERR_NOT_FOUND or (status == 0 and data is None):
+        return None
     if status != 0:
-        raise KeystoreError(f"the Keychain refused to save the key (status {status})")
+        raise KeystoreError(f"the Keychain would not give the sign-in (status {status})")
+    return bytes(data).decode()
 
 
 def saved_npubs() -> list[str]:

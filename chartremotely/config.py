@@ -34,6 +34,9 @@ DEFAULTS: dict = {
     "operator_url": None,
     "agent_id": None,
     "agent_secret": None,
+    # Whose display this is: the npub voice commands are billed to. Its
+    # sign-in (the dpop_token) lives in the login Keychain, never here.
+    "owner_npub": None,
     "token": None,
     "port": 8899,
 }

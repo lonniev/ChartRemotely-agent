@@ -9,6 +9,9 @@ again is always safe:
    passwords - and used once, in memory, to sign the pairing. It is never
    written to this agent's config.
 2. **Pairing**, without a code to copy: setup adopts this machine's code itself.
+   **Voice sign-in**: the ``dpop_token`` from the owner's DM proof, kept in
+   the login Keychain (their npub goes in the config), so the listener can
+   call the operator's priced tools as that patron.
 3. **Tailscale**: the Mac's tailnet address, with ``/chart`` forwarded to the agent.
 4. **Services**: the listener and the relay, under launchd.
 5. **Permissions**: Accessibility and Screen Recording, asked for by the
@@ -53,6 +56,8 @@ def prove_by_dm(client: mcpclient.Client, npub: str, ask: Ask, say: Say) -> str:
     say(f"A Nostr DM is on its way to {npub[:12]}…")
     say(f"Its confirmation code is: {phrase}")
     say("Reply to the DM from your Nostr client only if the codes match.")
+    say("In your reply you may set cache_duration - e.g. 30 days, or unlimited - so voice")
+    say("keeps working that long; left alone, the sign-in lasts 2 hours.")
     ask("Press Return once you have replied… ")
     got = client.call("chart_receive_npub_proof", {"patron_npub": npub, "dpop_token": phrase})
     if got.get("error"):
@@ -92,8 +97,12 @@ def keep_for_human(npub: str, nsec: str, ask: Ask, say: Say) -> None:
         keystore.clear_if_unchanged(nsec)
 
 
-def identity(client: mcpclient.Client, ask: Ask, say: Say) -> tuple[str, str]:
-    """Who owns this display, proven. Returns (npub, proof for chart_pair_agent)."""
+def identity(client: mcpclient.Client, ask: Ask, say: Say) -> tuple[str, str, bool]:
+    """Who owns this display, proven.
+
+    Returns (npub, proof for chart_pair_agent, whether that proof is a DM
+    sign-in the listener can keep using).
+    """
     say("Your Nostr identity owns this display.")
     say("  1  I have an npub (I'll answer a Nostr DM to prove it)")
     say("  2  Use a key saved on this Mac")
@@ -103,7 +112,7 @@ def identity(client: mcpclient.Client, ask: Ask, say: Say) -> tuple[str, str]:
         npub = ask("Your npub: ").strip()
         if not npub.startswith("npub1"):
             raise SetupError("that is not an npub")
-        return npub, prove_by_dm(client, npub, ask, say)
+        return npub, prove_by_dm(client, npub, ask, say), True
     if choice == "2":
         from . import keystore
 
@@ -115,7 +124,7 @@ def identity(client: mcpclient.Client, ask: Ask, say: Say) -> tuple[str, str]:
         picked = saved[int(ask("Which key? ").strip() or "1") - 1]
         nsec = keystore.load(picked)  # macOS asks the human first
         try:
-            return picked, sign_once(nsec, "chart_pair_agent")
+            return picked, sign_once(nsec, "chart_pair_agent"), False
         finally:
             del nsec
     if choice == "3":
@@ -123,10 +132,40 @@ def identity(client: mcpclient.Client, ask: Ask, say: Say) -> tuple[str, str]:
         try:
             say(f"Your new npub is {npub}")
             keep_for_human(npub, nsec, ask, say)
-            return npub, sign_once(nsec, "chart_pair_agent")
+            return npub, sign_once(nsec, "chart_pair_agent"), False
         finally:
             del nsec
     raise SetupError("choose 1, 2 or 3")
+
+
+# -- the voice sign-in --------------------------------------------------------
+
+def keep_sign_in(npub: str, token: str) -> None:
+    """The owner's npub into the config; their sign-in into the Keychain, only."""
+    from . import keystore
+
+    keystore.save_token(npub, token)
+    config.update(owner_npub=npub)
+
+
+def has_sign_in(npub: str) -> bool:
+    from . import keystore
+
+    try:
+        return bool(keystore.load_token(npub))
+    except keystore.KeystoreError:
+        return False
+
+
+def voice_sign_in(client: mcpclient.Client, npub: str, ask: Ask, say: Say) -> None:
+    """Voice commands are priced tool calls made as the owner: prove the npub by DM for them."""
+    config.update(owner_npub=npub)
+    say(f"Voice commands are paid for by {npub[:12]}…, signed in by a Nostr DM.")
+    if ask("Sign in for voice now? [Y/n] ").strip().lower().startswith("n"):
+        say("Then your first voice command sends the DM.")
+        return
+    keep_sign_in(npub, prove_by_dm(client, npub, ask, say))
+    say("Voice is signed in.")
 
 
 # -- pairing ------------------------------------------------------------------
@@ -148,16 +187,28 @@ def run(ask: Ask = input, say: Say = print, operator_url: str = OPERATOR_URL) ->
     token = config.ensure_token()
 
     # 1-2. Identity and pairing, unless this Mac is already paired.
+    client = mcpclient.Client(base)
     if cfg.get("agent_id") and cfg.get("agent_secret"):
         say(f"This Mac is already paired ({cfg['agent_id']}).")
-        npub = ""
+        npub = cfg.get("owner_npub") or ask("Your npub (whose display this is): ").strip()
+        if not npub.startswith("npub1"):
+            raise SetupError("that is not an npub")
+        if has_sign_in(npub):
+            config.update(owner_npub=npub)
+            say("Voice is already signed in.")
+        else:
+            voice_sign_in(client, npub, ask, say)
     else:
-        client = mcpclient.Client(base)
-        npub, proof = identity(client, ask, say)
+        npub, proof, by_dm = identity(client, ask, say)
         label = ask("Name this display (e.g. Desk, Office wall): ").strip() or "display"
         pair(client, base, npub, proof, label)
-        del proof
         say(f"Paired as “{label}”.")
+        if by_dm:
+            keep_sign_in(npub, proof)
+            say("Voice is signed in with the same DM.")
+        else:
+            voice_sign_in(client, npub, ask, say)
+        del proof
 
     # 3. Tailscale.
     from . import tailnet
