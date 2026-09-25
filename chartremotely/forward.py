@@ -1,11 +1,12 @@
-"""Send a spoken command on to another of the owner's displays.
+"""Hand a spoken chart change to the operator, which charges for it and relays it.
 
-The Shortcut asks "Where?" and passes the dictated answer through verbatim.
-Empty, or this Mac's exact agent_id, means this Mac. Any other name goes to
-the operator's ``/agent/forward``, which is the one place names are matched:
-it finds the display among the SAME owner's displays (loosely - "mini mac"
-finds "Mac mini") and relays the command there, or answers that the name is
-this Mac's own. The target's reply is what gets spoken.
+Every chart change heard by voice goes to the operator's ``/agent/forward``,
+even one for this Mac: blank "Where?" names this Mac by its own agent_id. The
+operator is the one place names are matched (loosely - "mini mac" finds
+"Mac mini") and the one place a change is priced, however it arrives. It
+answers as soon as the change is paid for; the chart then changes by itself,
+through this Mac's (or the target's) relay. So the words spoken back are the
+hand-off, never the chart's own reply.
 
 Stdlib only, like the relay, so it imports where the macOS drivers do not.
 """
@@ -19,13 +20,10 @@ import urllib.request
 from . import config
 
 ERR = "ERR "
-#: Longer than the operator's own wait on the target, so its 504 arrives first.
+#: The operator answers once the change is paid for, not once it is shown;
+#: this only bounds a cold operator.
 TIMEOUT = 35.0
-
-def is_here(where: str, cfg: dict) -> bool:
-    """Whether ``where`` means this Mac without asking: empty, or exactly its agent_id."""
-    wanted = (where or "").strip()
-    return not wanted or wanted == cfg.get("agent_id")
+AS_IS = {"", "as is", "asis"}
 
 
 def _post(url: str, payload: dict) -> tuple[int, dict]:
@@ -45,35 +43,46 @@ def _post(url: str, payload: dict) -> tuple[int, dict]:
     return status, body if isinstance(body, dict) else {}
 
 
-def route(command: str, where: str, cfg: dict | None = None) -> str | None:
-    """The reply of the display named ``where``, or None when that display is this Mac.
+def sent(command: str, where: str, accepted: dict) -> str:
+    """What to say once the operator has accepted a change: what, and where to."""
+    verb, _, rest = command.partition(" ")
+    ticker, _, scale = rest.partition("|")
+    if verb.lower() == "set":
+        what = str(accepted.get("symbol") or ticker.strip())
+        scale = str(accepted.get("scale") or scale.strip())
+    else:
+        what, scale = command, ""
+    at = "" if scale.lower() in AS_IS else f" at {scale} scale"
+    return f"Chart {what}{at} sent to {where or 'this Mac'}. Good luck."
 
-    Never raises: every failure is a short ``ERR`` sentence to be spoken.
+
+def send(command: str, where: str, cfg: dict | None = None) -> str:
+    """Send one chart change to the display named ``where`` (blank: this Mac).
+
+    Returns the sentence to speak. Never raises: every failure is a short
+    ``ERR`` sentence, the operator's own refusal when it gave one.
     """
     cfg = cfg or config.load()
-    if is_here(where, cfg):
-        return None
     base = (cfg.get("operator_url") or "").rstrip("/")
     agent_id, secret = cfg.get("agent_id"), cfg.get("agent_secret")
     if not (base and agent_id and secret):
-        return ERR + "This Mac is not paired, so it can only drive its own chart."
+        return ERR + "This Mac is not paired, so it cannot change a chart. Run chartremotely setup."
     # The Shortcut builds the command from this Mac's own replies, and every
-    # reply ends in a newline ("PLTR\n"), so a forwarded command arrives as
-    # "set PLTR\n | half\n". Run here, vocab strips that; the operator rightly
-    # refuses anything unprintable. Collapse the whitespace before it leaves.
-    wanted = " ".join(where.split())
+    # reply ends in a newline ("PLTR\n"), so the command arrives as
+    # "set PLTR\n | half\n"; the operator rightly refuses anything
+    # unprintable. Collapse the whitespace before it leaves.
+    wanted = " ".join((where or "").split())
+    command = " ".join(command.split())
     try:
         status, body = _post(f"{base}/agent/forward",
                              {"agent_id": agent_id, "secret": secret,
-                              "display": wanted, "cmd": " ".join(command.split())})
+                              "display": wanted or agent_id, "cmd": command})
     except (urllib.error.URLError, TimeoutError, OSError):
         return ERR + "I could not reach the operator."
-    if status == 200 and body.get("self"):
-        return None
-    if status == 200:
-        return str(body.get("reply") or "")
+    if status == 202:
+        return sent(command, wanted, body)
     if status == 404:
         names = [str(n) for n in body.get("displays") or []]
         yours = f" Yours: {', '.join(names)}." if names else ""
-        return ERR + f'No display named "{wanted}".{yours}'
+        return ERR + f'No display named "{wanted or "this Mac"}".{yours}'
     return ERR + str(body.get("error") or f"the operator answered {status}")

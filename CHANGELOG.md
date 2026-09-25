@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- Every voice chart change goes to the operator, which prices it like any tool call - blank "Where?" included (it names this Mac by its agent_id). The listener no longer drives the chart: it answers only the Shortcut's free `resolve` and `scale` lookups itself, and the chart changes through the relay, which also takes the picture. Needs ChartRemotely-mcp with the priced, 202-answering `/agent/forward`.
+- Siri answers the moment the operator accepts the change, instead of waiting for the chart: "Chart PLTR at half scale sent to Mac-mini. Good luck." ("this Mac" when "Where?" was blank; no scale when it was "as is"). An immediate refusal - unknown name, insufficient balance, offline display - is spoken instead.
+- The voice Shortcut no longer says "On it, requesting your chart now…" before sending; the reply is instant, so it speaks only that. Rebuild the Shortcut (`chartremotely setup`) to get it.
+
+### Removed
+- `forward.is_here` and `forward.route`, and the listener's local chart path; `forward.send` replaces them.
+
 ## [0.2.8] - 2026-09-25
 
 ### Added

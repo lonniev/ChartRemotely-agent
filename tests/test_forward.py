@@ -1,4 +1,4 @@
-"""Where?: this Mac, or another of the owner's displays through the operator.
+"""Every chart change goes to the operator; lookups stay on this Mac.
 
 The operator is a stub HTTP server and vocab is a stand-in, so this runs on
 Linux without the macOS drivers.
@@ -46,7 +46,7 @@ def operator(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "CONFIG_DIR", tmp_path)
     monkeypatch.setattr(config, "CONFIG_PATH", tmp_path / "config.json")
     StubOperator.seen = []
-    StubOperator.answer = (200, {"display": "Mac Mini", "reply": "Showing PLTR at daily. Good luck."})
+    StubOperator.answer = (202, {"accepted": True, "display": "Mac Mini", "symbol": "PLTR", "scale": "daily"})
     server = HTTPServer(("127.0.0.1", 0), StubOperator)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     base = f"http://127.0.0.1:{server.server_address[1]}"
@@ -97,34 +97,48 @@ def listener(operator, monkeypatch):
 
 # -- the listener ----------------------------------------------------------------
 
-def test_no_where_runs_here_exactly_as_before(listener):
+def test_a_blank_where_sends_this_macs_own_agent_id_and_says_this_mac(listener):
     post, ran, pictures = listener
-    assert post({"cmd": "set PLTR | daily"}) == "Showing PLTR at daily. Good luck."
-    assert ran == ["set PLTR | daily"] and len(pictures) == 1
-    assert StubOperator.seen == []
+    assert post({"cmd": "set PLTR | daily"}) == "Chart PLTR at daily scale sent to this Mac. Good luck."
+    assert StubOperator.seen == [("/agent/forward", {
+        "agent_id": "a1", "secret": "s1", "display": "a1", "cmd": "set PLTR | daily"})]
+    assert ran == [] and pictures == [], "the relay drives the chart and takes its picture"
 
 
-@pytest.mark.parametrize("said", ["", "  ", "a1", " a1 "])
-def test_blank_or_this_macs_agent_id_runs_here_without_asking(listener, said):
+@pytest.mark.parametrize("said", ["Desk", "desk", "mini mac", "A1", "a1"])
+def test_every_name_goes_to_the_operator_as_said(listener, said):
     post, ran, _ = listener
-    post({"cmd": "set PLTR | daily", "where": said})
-    assert ran == ["set PLTR | daily"] and StubOperator.seen == []
+    post({"cmd": "set PLTR | daily", "where": f" {said} "})
+    assert [body["display"] for _, body in StubOperator.seen] == [said]
+    assert ran == []
 
 
-@pytest.mark.parametrize("said", ["Desk", "desk", "mini mac", "A1"])
-def test_every_name_is_matched_by_the_operator_not_here(listener, said):
-    post, ran, _ = listener
-    StubOperator.answer = (200, {"self": True, "display": "Desk"})
-    post({"cmd": "set PLTR | daily", "where": said})
-    assert [body["display"] for _, body in StubOperator.seen] == [said.strip()]
-    assert ran == ["set PLTR | daily"], "the operator said it is this Mac, so it runs here"
+def test_a_named_change_is_answered_with_the_hand_off_at_once(listener):
+    post, ran, pictures = listener
+    StubOperator.answer = (202, {"accepted": True, "display": "Mac Mini", "symbol": "PLTR", "scale": "half"})
+    assert (post({"cmd": "set PLTR | half", "where": "Mac-mini"})
+            == "Chart PLTR at half scale sent to Mac-mini. Good luck.")
+    assert StubOperator.seen == [("/agent/forward", {
+        "agent_id": "a1", "secret": "s1", "display": "Mac-mini", "cmd": "set PLTR | half"})]
+    assert ran == [] and pictures == []
 
 
-def test_is_here_is_blank_or_the_exact_agent_id():
-    cfg = {"agent_id": "a1"}
-    assert forward.is_here("", cfg) and forward.is_here(" a1 ", cfg)
-    assert not forward.is_here("A1", cfg) and not forward.is_here("Desk", cfg)
-    assert forward.is_here("", {}) and not forward.is_here("a1", {})
+@pytest.mark.parametrize(("cmd", "accepted", "said"), [
+    ("set PLTR | as is", {"symbol": "PLTR", "scale": "as is"}, "Chart PLTR sent to desk. Good luck."),
+    ("set PLTR", {"symbol": "PLTR"}, "Chart PLTR sent to desk. Good luck."),
+    ("john deere", {}, "Chart john deere sent to desk. Good luck."),
+])
+def test_the_hand_off_names_only_what_was_asked(listener, cmd, accepted, said):
+    post, _, _ = listener
+    StubOperator.answer = (202, {"accepted": True, "display": "desk", **accepted})
+    assert post({"cmd": cmd, "where": "desk"}) == said
+
+
+@pytest.mark.parametrize("cmd", ["resolve palantir", "scale half"])
+def test_lookups_are_answered_here_and_never_sent(listener, cmd):
+    post, ran, pictures = listener
+    post({"cmd": cmd, "where": "desk"})
+    assert ran == [cmd] and StubOperator.seen == [] and pictures == []
 
 
 def test_each_request_is_logged_once_without_the_token_or_arguments(listener, capsys):
@@ -132,50 +146,46 @@ def test_each_request_is_logged_once_without_the_token_or_arguments(listener, ca
     capsys.readouterr()
     post({"cmd": "set PLTR | daily", "where": "desk"})
     StubOperator.answer = (404, {"error": "no display named 'kitchen'", "displays": ["Desk"]})
-    post({"cmd": "read", "where": "kitchen"})
+    post({"cmd": "set PLTR | daily", "where": "kitchen"})
     lines = capsys.readouterr().err.strip().splitlines()
     assert len(lines) == 2
     assert "serve verb=set where='desk'" in lines[0] and "reply=" not in lines[0]
-    assert "verb=read where='kitchen' reply='ERR No display named \"kitchen\". Yours: Desk.'" in lines[1]
+    assert "verb=set where='kitchen' reply='ERR No display named \"kitchen\". Yours: Desk.'" in lines[1]
     for line in lines:
         assert "T0KEN" not in line and "s1" not in line and "PLTR" not in line
-
-
-def test_another_name_is_forwarded_verbatim_and_its_reply_spoken(listener):
-    post, ran, pictures = listener
-    assert post({"cmd": "set PLTR | daily", "where": "mac-mini"}) == "Showing PLTR at daily. Good luck."
-    assert StubOperator.seen == [("/agent/forward", {
-        "agent_id": "a1", "secret": "s1", "display": "mac-mini", "cmd": "set PLTR | daily"})]
-    assert ran == [] and pictures == [], "the target runs it and pushes its own picture"
 
 
 def test_an_unknown_name_is_spoken_back_with_the_owners_names(listener):
     post, _, _ = listener
     StubOperator.answer = (404, {"error": "no display named 'kitchen'", "displays": ["Desk", "Mac Mini"]})
-    assert post({"cmd": "read", "where": "kitchen"}) == 'ERR No display named "kitchen". Yours: Desk, Mac Mini.'
+    assert (post({"cmd": "set PLTR | daily", "where": "kitchen"})
+            == 'ERR No display named "kitchen". Yours: Desk, Mac Mini.')
 
 
-# -- forward.route -----------------------------------------------------------------
+# -- forward.send -------------------------------------------------------------------
 
-def test_the_operator_saying_self_runs_here(operator):
-    StubOperator.answer = (200, {"self": True, "display": "Desk"})
-    assert forward.route("read", "desk") is None
+def test_insufficient_balance_is_spoken_as_the_operator_said_it(operator):
+    StubOperator.answer = (402, {"error": "Insufficient balance: 2 sats available, 3 required.",
+                                 "error_code": "insufficient_balance"})
+    assert (forward.send("set PLTR | daily", "desk")
+            == "ERR Insufficient balance: 2 sats available, 3 required.")
 
 
 def test_an_offline_display_is_said_plainly(operator):
     StubOperator.answer = (503, {"error": "attic is offline", "display": "attic"})
-    assert forward.route("read", "attic") == "ERR attic is offline"
+    assert forward.send("set PLTR | daily", "attic") == "ERR attic is offline"
 
 
-def test_an_unpaired_mac_can_only_drive_itself(operator):
+def test_an_unpaired_mac_cannot_change_a_chart(operator):
     config.update(agent_id=None, agent_secret=None)
-    assert forward.route("read", "attic").startswith("ERR This Mac is not paired")
-    assert forward.route("read", "") is None
+    for where in ("attic", ""):
+        assert forward.send("set PLTR | daily", where).startswith("ERR This Mac is not paired")
+    assert StubOperator.seen == []
 
 
 def test_an_unreachable_operator_is_an_error_not_an_exception(operator):
     config.update(operator_url="http://127.0.0.1:1")
-    assert forward.route("read", "attic") == "ERR I could not reach the operator."
+    assert forward.send("set PLTR | daily", "attic") == "ERR I could not reach the operator."
 
 
 # -- the Shortcut ------------------------------------------------------------------
@@ -196,7 +206,9 @@ def test_the_shortcut_asks_where_after_scale_and_sends_it_beside_cmd():
 def test_a_forwarded_command_carries_no_newlines_from_the_shortcut(listener):
     post, ran, pictures = listener
     # The Shortcut splices this Mac's own replies ("PLTR\n", "half\n") into the command.
-    post({"cmd": "set PLTR\n | half\n", "where": "Office\n"})
+    StubOperator.answer = (202, {"accepted": True, "display": "Office", "symbol": "PLTR", "scale": "half"})
+    assert (post({"cmd": "set PLTR\n | half\n", "where": "Office\n"})
+            == "Chart PLTR at half scale sent to Office. Good luck.")
     _, sent = StubOperator.seen[-1]
     assert sent["cmd"] == "set PLTR | half"
     assert sent["display"] == "Office"

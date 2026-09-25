@@ -97,13 +97,19 @@ ignores everything sent to it.
 2. **What scale?** — a time frame mnemonic (below), or "as is".
 3. **Where?** — which display. Leave it blank to stay on this Mac.
 
-The Shortcut talks to one Mac — the one that made it. Any name said at
-"Where?" goes to the operator, which finds the display among yours and
-relays the command there (or back here, if the name is this Mac's). Names
-may be loose: for a display paired as "Mac mini", "mac-mini", "mini mac",
-"mini", "macm" and even "mack meeny" all work. The reply you hear is that
-display's. A name that could mean several displays is answered with them,
-and an unknown name with the names you do have.
+The Shortcut talks to one Mac — the one that made it. That Mac looks up the
+company and the scale itself (free: a table, never the chart), then hands the
+change to the operator, which charges for it — a voice change costs what
+`chart_show_chart` costs — and relays it to the display named at "Where?", or
+back to this Mac when it was left blank. Siri answers at once, e.g. "Chart PLTR
+at half scale sent to Mac-mini. Good luck.", and the chart changes a moment
+later through that display's relay, which also takes its picture. Names may be
+loose: for a display paired as "Mac mini", "mac-mini", "mini mac", "mini",
+"macm" and even "mack meeny" all work. A name that could mean several displays
+is answered with them, an unknown name with the names you do have, and a
+balance too low for the change with the operator's own words. Because every
+change goes through the operator, a Mac that is not paired, or whose relay is
+not running, cannot change its chart by voice.
 
 Each command handled is logged as one line — time, the command's first word,
 the "Where?" as said, and the reply if it was an ERR — to

@@ -52,15 +52,14 @@ def test_every_question_takes_one_line_so_return_answers_it():
         assert ask.get("WFAskActionAllowsMultilineText") is False, ask.get("WFAskActionPrompt")
 
 
-def test_the_shortcut_says_it_is_on_it_while_the_request_goes_out():
+def test_the_shortcut_sends_right_after_where_and_speaks_only_the_reply():
     actions = plistlib.loads(shortcut.template())["WFWorkflowActions"]
     kinds = [a["WFWorkflowActionIdentifier"].rsplit(".", 1)[-1] for a in actions]
     where = next(i for i, a in enumerate(actions)
                  if a["WFWorkflowActionParameters"].get("CustomOutputName") == "Where")
-    assert kinds[where + 1:where + 3] == ["speaktext", "downloadurl"]
-    ack = actions[where + 1]["WFWorkflowActionParameters"]
-    assert ack["WFSpeakTextWait"] is False, "waiting for the words would delay the chart"
-    assert ack["WFText"].startswith("On it, requesting your chart now.")
+    assert kinds[where + 1:] == ["downloadurl", "speaktext"], "the reply is instant; nothing precedes it"
+    said = actions[-1]["WFWorkflowActionParameters"]["WFText"]["Value"]["attachmentsByRange"]["{0, 1}"]
+    assert said["OutputUUID"] == actions[where + 1]["WFWorkflowActionParameters"]["UUID"]
 
 
 def test_filling_the_template_changes_the_placeholders_and_nothing_else():
