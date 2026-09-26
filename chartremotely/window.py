@@ -16,7 +16,7 @@ from pathlib import Path
 
 import Quartz
 
-from . import ax, config, layout, screen, snapshot, symbol
+from . import ax, config, layout, popups, screen, snapshot, symbol
 
 #: NSApplicationActivateAllWindows | NSApplicationActivateIgnoringOtherApps:
 #: bring every thinkorswim window forward, even when another app is in front.
@@ -112,6 +112,8 @@ def _uncover(pid: int, bounds: dict) -> tuple[str, ...]:
 def capture(app=None) -> bytes:
     """PNG of the chart's own pane, and nothing else in the window.
 
+    Any popup left over the chart is closed first; see :func:`popups.dismiss`.
+
     Captured by window id rather than screen region, so it works even when
     something is floating on top - which is what makes it usable as proof
     that a remote command landed. Then cropped to the pane that holds the
@@ -127,6 +129,8 @@ def capture(app=None) -> bytes:
 
     # Hit-testing answers from the menu bar unless the app is in front.
     ax.activate(app)
+    # Never photograph a symbol list or scale menu left over the chart.
+    popups.dismiss(app)
     ax_app = ax.handle(app)
     prefix = config.load()["window_prefix"]
     hit = symbol.discover(ax_app, prefix)

@@ -6,6 +6,9 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- thinkorswim's symbol autocomplete list and time-frame menu no longer stay open over the chart, or in its picture. After a symbol is shown, a scale is set or read, and before every capture, `popups.dismiss()` closes the menu by pressing its toggle again, closes the list with Escape once the symbol field has focus (Escape only hides the list; typed text stays), and then moves focus to the chart's title strip - but only once that title names what the field holds, since the field commits its text when it loses focus. The Escape previously sent after reading the scale went to nothing with focus, which is why the menu stayed up.
+
 ## [0.2.10] - 2026-09-25
 
 ### Changed

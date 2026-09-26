@@ -7,6 +7,8 @@ which is the most awkward control in the application:
 * it ignores process-targeted mouse events entirely - no hover, no click
 * arrow keys do not move its selection
 * it dismisses when window activation changes
+* Escape does not close it (keyboard focus is elsewhere); pressing its
+  toggle again does - see :mod:`popups`
 
 Only a real HID click works, which means the target must be uncovered
 *before* the popup opens. Clearing occluders afterwards dismisses it.
@@ -21,7 +23,7 @@ from __future__ import annotations
 import re
 import time
 
-from . import ax, config, layout
+from . import ax, config, layout, popups
 from .scales import AS_IS, MNEMONIC, canon, to_code
 
 ITEM = re.compile(r"^\s*\d+\s*[DYW]\s*:\s*\S+", re.IGNORECASE)
@@ -138,7 +140,7 @@ def presets(app=None) -> list[str]:
     ax_app = ax.handle(app)
     _open(ax_app, config.load())
     rows = _rows(ax_app)
-    ax.escape(app.processIdentifier())
+    popups.dismiss(app)
     return [r["label"] for r in rows]
 
 
@@ -149,7 +151,7 @@ def current(app=None) -> tuple[str, str]:
     ax_app = ax.handle(app)
     _open(ax_app, config.load())
     rows = _rows(ax_app)
-    ax.escape(app.processIdentifier())
+    popups.dismiss(app)
     active = next((r for r in rows if r["active"]), None)
     if active is None:
         raise MenuError("could not read the current scale")
@@ -202,9 +204,8 @@ def set_scale(phrase: str, app=None) -> tuple[str, str]:
         ax.click(match["x"], match["y"], pid)
         time.sleep(0.5)
         label = match["label"]
-        return label, MNEMONIC.get(canon(label), label)
-    except Exception:
-        ax.escape(pid)
-        raise
     finally:
+        # Picked or refused, the menu must not stay over the chart.
+        popups.dismiss(app)
         ax.unhide_apps(hidden)
+    return label, MNEMONIC.get(canon(label), label)

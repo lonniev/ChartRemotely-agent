@@ -13,10 +13,14 @@ import time
 
 import Quartz
 
-from . import ax, config, layout
+from . import ax, config, layout, popups
 
 # Accepts tickers, futures (/ES), indices (.SPX) and share classes (BRK/B).
 TICKER = re.compile(r"^[./$]?[A-Z]{1,6}([/.][A-Z]{1,2})?(:[A-Z]+)?$")
+
+#: Longest show() waits for the chart's title to name the new symbol.
+COMMIT_WAIT = 3.0
+
 
 class NotFound(RuntimeError):
     """The symbol field could not be located or did not validate."""
@@ -157,4 +161,10 @@ def show(ticker: str, app=None) -> str:
     ax.key(ax.KEY_RETURN, 0, pid)
     time.sleep(0.25)
     ax.key(ax.KEY_RETURN, 0, pid)
+
+    # The list can outlive both Returns and would sit over the chart - and
+    # over the chart's title, the one place that says the symbol took. Close
+    # it (Escape never discards a typed entry), wait for the title to name the
+    # ticker, then take focus off the field so nothing is left hanging.
+    popups.dismiss(app, expect=ticker, timeout=COMMIT_WAIT)
     return previous
