@@ -10,7 +10,9 @@ shortcut is edited and needs a key per device, while Get Contents of URL
 needs neither.
 
 A POST marked ``?hear`` (or sent as ``audio/*``) is a recorded sentence
-instead of a command: see :mod:`voice`.
+instead of a command: see :mod:`voice`. A JSON body ``{"said": ...}`` is a
+typed sentence - what the Shortcut posts from its typing box - understood the
+same way (:func:`voice.respond_typed`).
 """
 
 from __future__ import annotations
@@ -72,11 +74,19 @@ class Handler(BaseHTTPRequestHandler):
         if raw.startswith("{"):
             try:
                 body = json.loads(raw)
+                if "said" in body:
+                    return self._typed(body.get("said"))
                 raw = str(body.get("cmd") or "").strip()
                 where = str(body.get("where") or "").strip()
-            except (ValueError, AttributeError):
+            except (ValueError, AttributeError, TypeError):
                 return self._reply(400, "ERR bad JSON")
         self._answer(raw, where)
+
+    def _typed(self, said) -> None:
+        """A typed sentence from the Shortcut's text box (see :mod:`voice`)."""
+        from . import voice
+
+        self._reply(200, voice.respond_typed(said if isinstance(said, str) else ""))
 
     def _hear(self, length: int) -> None:
         """A recorded sentence: hear it, understand it, answer it (see :mod:`voice`).

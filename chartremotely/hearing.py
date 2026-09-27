@@ -14,6 +14,10 @@ Three rules:
   wav - whatever the Shortcut sent) into 16 kHz mono 16-bit PCM, in a private
   temporary folder that is removed before the reply.
 * **Never log audio.** Only the text heard is logged, by the caller.
+* **Typing is the fallback.** A recording with nothing in it - empty, a
+  bare header, silence, noise Whisper hears only filler in - raises
+  :class:`Unheard`, and :mod:`voice` answers with the typing box instead of a
+  sentence to speak.
 * **Lazy.** ``mlx_whisper`` and ``numpy`` are imported only when a sentence
   is actually heard, so this module imports anywhere (CI runs on Linux).
 
@@ -26,11 +30,13 @@ sentence then takes about a second, not three.
 from __future__ import annotations
 
 import platform
+import re
 import subprocess
 import sys
 import tempfile
 import threading
 import wave
+from array import array
 from collections.abc import Callable, Iterable
 from pathlib import Path
 
@@ -45,6 +51,17 @@ MAX_SECONDS = 15.0
 #: Whisper reads at most 224 prompt tokens; English runs about four
 #: characters a token, so this keeps the prompt near 200.
 PROMPT_CHARS = 800
+#: Smaller than any real recording: a Shortcut that captured nothing still
+#: sends an m4a header (28 bytes on a Mac mini, which has no microphone).
+MIN_BYTES = 512
+#: Shorter than a word, or quieter than a room (RMS of 16-bit samples, about
+#: -56 dBFS): nothing was said.
+MIN_SECONDS = 0.3
+SILENCE_RMS = 50
+#: What Whisper "hears" in silence or noise, lower-cased, punctuation dropped.
+FILLER = frozenset({"you", "thank you", "thanks", "thank you very much", "thanks for watching",
+                    "thank you for watching", "bye", "bye bye", "uh", "um", "hmm", "mm", "ah",
+                    "oh", "so", "okay", "ok", "the", "music", "silence", "applause"})
 AFCONVERT = "/usr/bin/afconvert"
 
 #: The bar phrases people say instead of a mnemonic.
@@ -57,6 +74,11 @@ SUFFIX = {"audio/m4a": ".m4a", "audio/x-m4a": ".m4a", "audio/mp4": ".m4a", "audi
 
 class HearingError(RuntimeError):
     """The recording could not be read or transcribed; the text is fit to speak."""
+
+
+class Unheard(HearingError):
+    """Nothing usable was recorded - no microphone, silence, noise, an unreadable
+    file, or a Mac that cannot hear yet. Answered with the typing box, not spoken."""
 
 
 def supported() -> bool:
@@ -87,7 +109,7 @@ def read_pcm(path: Path) -> bytes:
     """The 16-bit mono frames of a WAV file afconvert wrote, refusing anything else."""
     with wave.open(str(path), "rb") as wav:
         if wav.getsampwidth() != 2 or wav.getnchannels() != 1:
-            raise HearingError("The recording was not in a shape I can hear.")
+            raise Unheard("The recording was not in a shape I can hear.")
         if wav.getnframes() > MAX_SECONDS * wav.getframerate():
             raise HearingError(f"That was longer than {int(MAX_SECONDS)} seconds. Say it shorter.")
         return wav.readframes(wav.getnframes())
@@ -96,8 +118,8 @@ def read_pcm(path: Path) -> bytes:
 def decode(audio: bytes, content_type: str | None = None,
            run: Callable[..., subprocess.CompletedProcess] = subprocess.run) -> bytes:
     """A recording, as 16 kHz mono 16-bit PCM. Nothing is left on disk after."""
-    if not audio:
-        raise HearingError("I didn't hear anything.")
+    if len(audio) < MIN_BYTES:
+        raise Unheard("I didn't hear anything.")
     if len(audio) > MAX_BYTES:
         raise HearingError(f"That was longer than {int(MAX_SECONDS)} seconds. Say it shorter.")
     with tempfile.TemporaryDirectory(prefix="chartremotely-hear-") as folder:
@@ -107,8 +129,25 @@ def decode(audio: bytes, content_type: str | None = None,
         done = run([AFCONVERT, "-f", "WAVE", "-d", f"LEI16@{RATE}", "-c", "1",
                     str(source), str(target)], capture_output=True, check=False, timeout=20)
         if done.returncode != 0 or not target.exists():
-            raise HearingError("I couldn't read that recording.")
+            raise Unheard("I couldn't read that recording.")
         return read_pcm(target)
+
+
+def usable(pcm: bytes) -> bool:
+    """Was anything said? At least :data:`MIN_SECONDS` long and louder than silence."""
+    if len(pcm) < MIN_SECONDS * RATE * 2:
+        return False
+    frames = array("h")
+    frames.frombytes(pcm[: len(pcm) // 2 * 2])
+    if sys.byteorder != "little":
+        frames.byteswap()
+    return (sum(x * x for x in frames) / len(frames)) ** 0.5 >= SILENCE_RMS
+
+
+def filler(text: str) -> bool:
+    """Is this what Whisper makes of silence or noise, rather than a request?"""
+    words = " ".join(re.sub(r"[^a-z0-9 ]+", " ", (text or "").lower()).split())
+    return not words or words in FILLER
 
 
 def samples(pcm: bytes):
@@ -178,7 +217,7 @@ def transcribe(pcm: bytes, initial_prompt: str | None = None) -> str:
         try:
             return _transcribe(samples(pcm), initial_prompt)
         except ImportError:
-            raise HearingError("This Mac cannot hear yet. Run chartremotely setup.") from None
+            raise Unheard("This Mac cannot hear yet. Run chartremotely setup.") from None
 
 
 def warm() -> bool:
@@ -209,7 +248,7 @@ def fetch_model(say: Callable[[str], None] = print) -> bool:
     Returns whether it is ready. Skipped, with a reason, where it cannot run.
     """
     if not supported():
-        say("Hearing needs an Apple-silicon Mac; the “ChartRemotely Ask” Shortcut still works.")
+        say("Hearing needs an Apple-silicon Mac; the Shortcut offers a typing box instead.")
         return False
     try:
         from huggingface_hub import snapshot_download

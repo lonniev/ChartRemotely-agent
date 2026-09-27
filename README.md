@@ -117,12 +117,14 @@ listener loads it when it starts, so a sentence takes about a second to hear.
 Setup also learns your display names (the free `chart_agent_status`, asked at
 most every four hours) so "on the studio" is understood.
 
-**ChartRemotely Ask** is the fallback Shortcut, installed alongside: it asks
-three questions and takes typed or dictated answers -
-
-1. **Which company?** — a spoken name or a spelled ticker.
-2. **What scale?** — a time frame mnemonic (below), or "as is".
-3. **Where?** — which display. Leave it blank to stay on this Mac.
+**One Shortcut: talk, or type when it asks.** When the recording has
+nothing in it - no microphone, silence, noise, or a Mac that cannot hear yet
+- "ChartRemotely" shows one text box instead: *Type your request, e.g.
+Palantir half on mac mini*. Type the same sentence and press Return; it is
+understood the same way and costs the same. If something is missing, the box
+comes back with the question ("I heard Nvidia but no scale. Type the scale,
+like half or daily."). On a Mac the Shortcut goes straight to the box: Record
+Audio waits forever on a Mac without a microphone, and a Mac has a keyboard.
 
 The Shortcut talks to one Mac — the one that made it. That Mac looks up the
 company and the scale itself (free: a table, never the chart), then acts as
@@ -202,8 +204,9 @@ and runs `chartremotely setup`, which:
 4. installs the listener and the relay as launchd agents;
 5. asks macOS for Accessibility and Screen Recording for the Python that runs them;
 6. fetches the Whisper speech model (about 1.6 GB, once) and your display names;
-7. makes this Mac's two Shortcuts, "ChartRemotely" (one spoken sentence) and
-   "ChartRemotely Ask" (three questions), and opens them for import.
+7. makes this Mac's Shortcut, "ChartRemotely" (talk, or type when it asks),
+   opens it for import, and removes a "ChartRemotely Ask" an older setup left
+   in your library.
 
 Run it again at any time: finished steps are skipped. `chartremotely doctor`
 reports anything still missing.

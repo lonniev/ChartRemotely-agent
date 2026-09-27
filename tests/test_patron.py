@@ -6,7 +6,6 @@ Linux without the macOS drivers.
 
 import importlib
 import json
-import plistlib
 import sys
 import threading
 import time
@@ -15,7 +14,7 @@ import urllib.request
 
 import pytest
 
-from chartremotely import config, keystore, mcpclient, patron, shortcut
+from chartremotely import config, keystore, mcpclient, patron
 from chartremotely.answer import Answer
 
 NPUB = "npub1" + "p" * 58
@@ -260,16 +259,3 @@ def test_lookups_are_answered_here_and_never_sent(listener, operator, cmd):
     assert ran == [cmd] and operator.calls == []
 
 
-# -- the Shortcut --------------------------------------------------------------------------
-
-def test_the_shortcut_asks_where_after_scale_and_sends_it_beside_cmd():
-    actions = plistlib.loads(shortcut.template())["WFWorkflowActions"]
-    prompts = [a["WFWorkflowActionParameters"].get("WFAskActionPrompt") for a in actions]
-    assert prompts.index("Where?") > prompts.index("What scale?")
-    final = next(a for a in actions[prompts.index("Where?"):]
-                 if a["WFWorkflowActionIdentifier"].endswith(".downloadurl"))["WFWorkflowActionParameters"]
-    fields = {i["WFKey"]["Value"]["string"]: i["WFValue"]["Value"]
-              for i in final["WFJSONValues"]["Value"]["WFDictionaryFieldValueItems"]}
-    assert fields["cmd"]["string"] == "set ￼ | ￼", "the vocab grammar is unchanged"
-    where = actions[prompts.index("Where?")]["WFWorkflowActionParameters"]["UUID"]
-    assert fields["where"]["attachmentsByRange"]["{0, 1}"]["OutputUUID"] == where

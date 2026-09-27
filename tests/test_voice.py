@@ -42,8 +42,16 @@ class Ear:
             self.sent.append((command, where))
             return f"sent {command} to {where or 'this Mac'}"
 
+        kwargs.setdefault("usable", lambda pcm: True)
         return voice.respond(audio, "audio/m4a", decode=lambda a, t: b"pcm", transcribe=transcribe,
                              send=send, rows=ROWS, known=DISPLAYS, now=lambda: self.clock, **kwargs)
+
+    def typed(self, text):
+        def send(command, where):
+            self.sent.append((command, where))
+            return f"sent {command} to {where or 'this Mac'}"
+
+        return voice.respond_typed(text, send=send, rows=ROWS, known=DISPLAYS, now=lambda: self.clock)
 
 
 def test_a_whole_sentence_is_one_priced_call():
@@ -95,9 +103,46 @@ def test_a_completed_request_is_not_carried_into_the_next():
     assert ear.respond() == f"Which company at daily? {voice.LISTENING}"
 
 
-def test_nothing_heard_is_asked_again():
-    ear = Ear("")
-    assert ear.respond() == f"I didn't hear anything. Say a company and a scale. {voice.LISTENING}"
+# -- nothing usable heard: the typing box ------------------------------------------------------
+
+TYPE_BOX = "TYPE:Type your request, e.g. Palantir half on mac mini"
+
+
+def test_the_marker_is_the_prefix_and_the_prompt():
+    assert voice.typing() == TYPE_BOX
+    assert voice.typing().startswith(voice.TYPE)
+
+
+@pytest.mark.parametrize("heard", ["", "Thank you.", "you", "[Music]"])
+def test_nothing_or_filler_heard_offers_the_typing_box_at_once(heard):
+    ear = Ear(heard)
+    said = ear.respond()
+    assert said == TYPE_BOX, "a marker, never a question that records again"
+    assert voice.LISTENING not in said and ear.sent == []
+
+
+def test_silence_offers_the_typing_box_without_waking_whisper():
+    said = voice.respond(b"m4a", "audio/m4a", decode=lambda a, t: b"\x00\x00" * hearing.RATE * 6,
+                         transcribe=lambda pcm, prompt: pytest.fail("silence is not transcribed"),
+                         send=lambda c, w: pytest.fail("no call"), rows=ROWS, known=DISPLAYS)
+    assert said == TYPE_BOX
+
+
+@pytest.mark.parametrize("why", ["I didn't hear anything.", "I couldn't read that recording.",
+                                 "This Mac cannot hear yet. Run chartremotely setup."])
+def test_an_empty_or_unreadable_recording_offers_the_typing_box(why):
+    def refuse(audio, content_type):
+        raise hearing.Unheard(why)
+    said = voice.respond(b"", "audio/x-m4a", decode=refuse, rows=ROWS, known=DISPLAYS,
+                         send=lambda c, w: pytest.fail("no call"))
+    assert said == TYPE_BOX
+
+
+def test_the_mac_minis_empty_recording_offers_the_typing_box():
+    header = bytes.fromhex("0000001c667479704d344120000000004d3441206d70343269736f6d")
+    said = voice.respond(header, "audio/x-m4a", rows=ROWS, known=DISPLAYS,
+                         send=lambda c, w: pytest.fail("no call"))
+    assert said == TYPE_BOX
 
 
 def test_a_recording_that_cannot_be_heard_is_spoken_as_an_err_and_never_asks_again():
@@ -109,12 +154,42 @@ def test_a_recording_that_cannot_be_heard_is_spoken_as_an_err_and_never_asks_aga
     assert voice.LISTENING not in said
 
 
-def test_a_hearing_crash_is_never_a_stack_trace():
+def test_a_hearing_crash_is_never_a_stack_trace_and_offers_the_typing_box():
     def boom(pcm, prompt):
         raise RuntimeError("Metal device lost at 0xdeadbeef")
-    said = voice.respond(b"x", None, decode=lambda a, t: b"pcm", transcribe=boom, rows=ROWS,
-                         known=DISPLAYS, send=lambda c, w: pytest.fail("no call"))
-    assert said == "ERR I couldn't hear that. Try again."
+    said = voice.respond(b"x", None, decode=lambda a, t: b"pcm", usable=lambda pcm: True, transcribe=boom,
+                         rows=ROWS, known=DISPLAYS, send=lambda c, w: pytest.fail("no call"))
+    assert said == TYPE_BOX and "deadbeef" not in said
+
+
+# -- typed ------------------------------------------------------------------------------------
+
+def test_a_typed_sentence_is_understood_and_sent_like_a_spoken_one():
+    ear = Ear()
+    assert ear.typed("Palantir half on mac mini") == "sent set PLTR | half to mac mini"
+    assert ear.sent == [("set PLTR | half", "mac mini")]
+
+
+def test_a_blank_typed_request_asks_for_the_typing_box():
+    ear = Ear()
+    assert ear.typed("") == TYPE_BOX and ear.typed("   ") == TYPE_BOX
+    assert ear.sent == []
+
+
+def test_a_typed_request_missing_something_asks_in_the_box_not_aloud():
+    ear = Ear()
+    first = ear.typed("Nvidia on the studio")
+    assert first == "TYPE:I heard Nvidia but no scale. Type the scale, like half or daily."
+    assert voice.LISTENING not in first and ear.sent == []
+    ear.clock += 10
+    assert ear.typed("daily") == "sent set NVDA | daily to studio"
+
+
+def test_a_typed_request_is_cut_to_one_printable_line():
+    ear = Ear()
+    assert ear.typed("apple\x00\nas is") == "sent set AAPL |  to this Mac"
+    assert len(ear.typed("x" * 5000)) < 400, "read only the first TYPED_MAX characters"
+    assert ear.typed(None) == TYPE_BOX
 
 
 def test_recent_symbols_prime_the_model(tmp_path):
@@ -136,6 +211,7 @@ def listener(monkeypatch):
     monkeypatch.delitem(sys.modules, "chartremotely.server", raising=False)
     server = importlib.import_module("chartremotely.server")
     monkeypatch.setattr(voice, "respond", lambda audio, ctype: heard.append((audio, ctype)) or "Chart sent.")
+    monkeypatch.setattr(voice, "respond_typed", lambda said: heard.append(("typed", said)) or "Chart typed.")
     server.Handler.token = "T0KEN"
     from http.server import HTTPServer
     http = HTTPServer(("127.0.0.1", 0), server.Handler)
@@ -184,3 +260,23 @@ def test_is_recording_tells_a_sentence_from_a_command(listener):
     assert server.is_recording("hear=1", "application/octet-stream")
     assert server.is_recording("", "audio/mp4")
     assert not server.is_recording("", "application/json")
+
+
+def test_a_typed_sentence_on_the_chart_path_is_understood(listener):
+    post, heard = listener
+    assert post(b'{"said": "Palantir half on mac mini"}', query="", ctype="application/json") == \
+        (200, "Chart typed.")
+    assert post(b'{"said": ""}', query="", ctype="application/json") == (200, "Chart typed.")
+    assert heard == [("typed", "Palantir half on mac mini"), ("typed", "")]
+
+
+def test_a_typed_sentence_that_is_not_text_is_blank(listener):
+    post, heard = listener
+    post(b'{"said": ["rm", "-rf"]}', query="", ctype="application/json")
+    assert heard == [("typed", "")]
+
+
+def test_a_typed_sentence_needs_the_token(listener):
+    post, heard = listener
+    assert post(b'{"said": "Palantir half"}', query="", ctype="application/json", token="wrong")[0] == 403
+    assert heard == []

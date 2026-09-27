@@ -18,8 +18,10 @@ again is always safe:
    services' own Python, since that is the process macOS grants them to.
 6. **Hearing**: the Whisper speech model, fetched once (about 1.6 GB), and
    the owner's display names, so a sentence can say where.
-7. **The Shortcuts**: this Mac's "ChartRemotely" (one spoken sentence) and
-   "ChartRemotely Ask" (three questions), opened for import.
+7. **The Shortcut**: this Mac's "ChartRemotely" - talk, or type when it
+   asks - opened for import. A "ChartRemotely Ask" left by an older setup is
+   removed from the library (by "Shortcuts Events"; named for deleting by
+   hand if that fails).
 """
 
 from __future__ import annotations
@@ -246,21 +248,25 @@ def run(ask: Ask = input, say: Say = print, operator_url: str = OPERATOR_URL) ->
 
     try:
         hearing.fetch_model(say)
-    except Exception as exc:  # noqa: BLE001 - the Ask Shortcut works without it
+    except Exception as exc:  # noqa: BLE001 - the typing box works without it
         say(f"The speech model could not be fetched ({type(exc).__name__}); run setup again later.")
     if displays.refresh() is not None:
         say(f"Displays you can name: {', '.join(displays.load()) or 'none yet'}.")
 
-    # 7. The Shortcuts.
+    # 7. The Shortcut.
     from . import shortcut
 
-    for made in shortcut.build_all(url, token):
-        subprocess.run(["open", str(made)], check=False)
-    say("Add both Shortcuts when they open; iCloud brings them to your iPhone, iPad and Watch.")
+    subprocess.run(["open", str(shortcut.build(url, token))], check=False)
+    say("Add the Shortcut when it opens; iCloud brings it to your iPhone, iPad and Watch.")
+    removed, left = shortcut.remove_retired()
+    if removed:
+        say(f"Removed {', '.join(f'“{n}”' for n in removed)}; “ChartRemotely” does it all now.")
+    if left:
+        say(f"Delete {', '.join(f'“{n}”' for n in left)} in the Shortcuts app; “ChartRemotely” does it all now.")
 
     say("")
     say("Done. Say “Hey Siri, ChartRemotely”, then one sentence: “Palantir, half, on mac mini”.")
-    say("“Hey Siri, ChartRemotely Ask” asks the three questions instead.")
+    say("No microphone, or it didn't hear you? It shows a box: type the same sentence.")
     if npub:
         say(f"Your npub: {npub}")
     say(f"Sign in at {SITE} to see your screens.")

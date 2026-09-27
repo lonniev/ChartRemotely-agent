@@ -33,44 +33,29 @@ def test_a_tool_answer_prefers_structured_content_then_text_json():
     assert mcpclient.tool_payload({"content": [{"type": "text", "text": '{"b": 2}'}]}) == {"b": 2}
 
 
-# -- the voice Shortcut ---------------------------------------------------------
+# -- the Shortcut ---------------------------------------------------------------
 
-@pytest.mark.parametrize("name", list(shortcut.TEMPLATES))
-def test_the_template_carries_placeholders_and_no_ones_address_or_token(name):
-    raw = shortcut.template(name).decode()
+def test_the_template_carries_placeholders_and_no_ones_address_or_token():
+    raw = shortcut.template().decode()
     assert raw.count(shortcut.URL_MARK) >= 1 and raw.count(shortcut.TOKEN_MARK) >= 1
     assert ".ts.net" not in raw, "a real tailnet address leaked into the template"
     # Agent tokens are 43-character urlsafe strings; none may sit in a <string>.
     assert not re.search(r"<string>[A-Za-z0-9_-]{40,}</string>", raw)
 
 
-def test_every_question_takes_one_line_so_return_answers_it():
-    actions = plistlib.loads(shortcut.template())["WFWorkflowActions"]
-    asks = [a["WFWorkflowActionParameters"] for a in actions
-            if a["WFWorkflowActionIdentifier"].endswith(".ask")]
-    assert asks, "the template asks nothing"
-    for ask in asks:
-        assert ask.get("WFAskActionAllowsMultilineText") is False, ask.get("WFAskActionPrompt")
-
-
-def test_the_shortcut_sends_right_after_where_and_speaks_only_the_reply():
-    actions = plistlib.loads(shortcut.template())["WFWorkflowActions"]
-    kinds = [a["WFWorkflowActionIdentifier"].rsplit(".", 1)[-1] for a in actions]
-    where = next(i for i, a in enumerate(actions)
-                 if a["WFWorkflowActionParameters"].get("CustomOutputName") == "Where")
-    assert kinds[where + 1:] == ["downloadurl", "speaktext"], "the reply is instant; nothing precedes it"
-    said = actions[-1]["WFWorkflowActionParameters"]["WFText"]["Value"]["attachmentsByRange"]["{0, 1}"]
-    assert said["OutputUUID"] == actions[where + 1]["WFWorkflowActionParameters"]["UUID"]
-
-
-@pytest.mark.parametrize("name", list(shortcut.TEMPLATES))
-def test_filling_the_template_changes_the_placeholders_and_nothing_else(name):
-    raw = shortcut.template(name)
+def test_filling_the_template_changes_the_placeholders_and_nothing_else():
+    raw = shortcut.template()
     filled = shortcut.fill(raw, "https://mac.example.ts.net/chart", "T0KEN")
     text = plistlib.dumps(filled).decode()
     assert shortcut.URL_MARK not in text and shortcut.TOKEN_MARK not in text
     back = text.replace("https://mac.example.ts.net/chart", shortcut.URL_MARK).replace("T0KEN", shortcut.TOKEN_MARK)
     assert plistlib.loads(back.encode()) == plistlib.loads(raw), "only the two values may differ"
+
+
+def test_only_the_one_template_ships():
+    from importlib import resources
+    assets = sorted(p.name for p in resources.files("chartremotely").joinpath("assets").iterdir())
+    assert assets == ["shortcut.plist"]
 
 
 def test_a_missing_value_is_refused_rather_than_left_as_a_placeholder():
@@ -274,7 +259,8 @@ def test_a_made_key_never_reaches_the_agents_config(monkeypatch, tmp_path):
     monkeypatch.setattr(services, "probe_permissions",
                         lambda request, out: {"accessibility": True, "screen_recording": True})
     built = []
-    monkeypatch.setattr(shortcut, "build_all", lambda url, token: built.append(url) or [tmp_path / "x.shortcut"])
+    monkeypatch.setattr(shortcut, "build", lambda url, token: built.append(url) or tmp_path / "x.shortcut")
+    monkeypatch.setattr(shortcut, "remove_retired", lambda: ([], []))
     _no_hearing(monkeypatch)
     monkeypatch.setattr(setup.subprocess, "run", lambda *a, **k: None)
 
@@ -310,7 +296,8 @@ def _stand_in_the_mac(monkeypatch, tmp_path, answers):
     monkeypatch.setattr(services, "install", lambda command: None)
     monkeypatch.setattr(services, "probe_permissions",
                         lambda request, out: {"accessibility": True, "screen_recording": True})
-    monkeypatch.setattr(shortcut, "build_all", lambda url, token: [tmp_path / "x.shortcut"])
+    monkeypatch.setattr(shortcut, "build", lambda url, token: tmp_path / "x.shortcut")
+    monkeypatch.setattr(shortcut, "remove_retired", lambda: ([], []))
     monkeypatch.setattr(setup.subprocess, "run", lambda *a, **k: None)
     _no_hearing(monkeypatch)
     vault = {}
@@ -342,3 +329,54 @@ def test_an_already_paired_mac_is_signed_in_for_voice_by_dm(monkeypatch, tmp_pat
     assert setup.run(ask=lambda q: next(answers), say=lambda s: None) == 0
     assert vault == {NPUB: "seven-amber-door"}
     assert "seven-amber-door" not in (tmp_path / "config.json").read_text()
+
+
+def test_setup_removes_a_retired_ask_shortcut_and_names_any_it_could_not(monkeypatch, tmp_path):
+    _stand_in_the_mac(monkeypatch, tmp_path, {
+        "chart_request_npub_proof": {"dpop_token": "seven-amber-door"},
+        "chart_receive_npub_proof": {"success": True, "dpop_token": "seven-amber-door"}})
+    config.update(operator_url="https://op.test", agent_id="a1", agent_secret="agent-secret")
+    monkeypatch.setattr(shortcut, "remove_retired", lambda: (["ChartRemotely Ask"], ["ChartRemotely Ask 2"]))
+    answers = iter([NPUB, "y", ""])
+    said = []
+    assert setup.run(ask=lambda q: next(answers), say=said.append) == 0
+    assert "Removed “ChartRemotely Ask”; “ChartRemotely” does it all now." in said
+    assert "Delete “ChartRemotely Ask 2” in the Shortcuts app; “ChartRemotely” does it all now." in said
+
+
+class Library:
+    """The Shortcuts library as `shortcuts list` and Shortcuts Events see it."""
+
+    def __init__(self, *names, refuse=()):
+        self.names, self.refuse, self.scripts = list(names), set(refuse), []
+
+    def __call__(self, args, **kwargs):
+        import subprocess
+        if args[:2] == ["shortcuts", "list"]:
+            return subprocess.CompletedProcess(args, 0, stdout="\n".join(self.names) + "\n")
+        assert args[:2] == ["osascript", "-e"]
+        self.scripts.append(args[2])
+        name = args[2].split('delete shortcut "', 1)[1][:-1]
+        if name in self.refuse:
+            return subprocess.CompletedProcess(args, 1)
+        self.names.remove(name)
+        return subprocess.CompletedProcess(args, 0)
+
+
+def test_only_the_ask_shortcuts_are_removed_and_the_real_one_is_kept():
+    library = Library("ChartRemotely", "ChartRemotely Ask", "ChartRemotely Ask 2", "ChartRemotely 3", "Ask Me",
+                      refuse={"ChartRemotely Ask 2"})
+    assert shortcut.remove_retired(run=library) == (["ChartRemotely Ask"], ["ChartRemotely Ask 2"])
+    assert library.names == ["ChartRemotely", "ChartRemotely Ask 2", "ChartRemotely 3", "Ask Me"]
+    assert all("Shortcuts Events" in s for s in library.scripts)
+
+
+def test_nothing_but_a_retired_shortcut_can_be_removed():
+    with pytest.raises(ValueError):
+        shortcut.remove("ChartRemotely", run=lambda *a, **k: pytest.fail("never asked"))
+
+
+def test_no_shortcuts_command_means_nothing_to_remove():
+    def missing(*a, **k):
+        raise OSError("no shortcuts")
+    assert shortcut.remove_retired(run=missing) == ([], [])
