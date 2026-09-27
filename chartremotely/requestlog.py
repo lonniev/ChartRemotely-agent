@@ -2,8 +2,12 @@
 
 launchd sends stderr to ``~/Library/Logs/chartremotely-<service>.log``. The
 line carries only what is needed to tell requests apart: the time, the verb
-(the command's first word, never its arguments), the "Where?" as dictated,
-and the reply when it is an ERR. Never a token, a secret or a picture.
+(the command's first word), the "Where?" as dictated, and the reply when it
+is an ERR. A command's arguments are never logged - except for the free
+``resolve`` and ``scale`` lookups, whose argument is what Siri heard for a
+company or a time frame (``heard=``, at most :data:`HEARD_MAX` characters):
+not sensitive, and the only way to see why a word was not understood.
+Never a token, a secret or a picture.
 
 Stdlib only, like the relay, so it imports where the macOS drivers do not.
 """
@@ -15,6 +19,9 @@ import time
 
 WHERE_MAX = 64
 ERR_MAX = 200
+HEARD_MAX = 60
+#: The verbs whose argument is logged as ``heard=``; see the module doc.
+HEARD_VERBS = frozenset({"resolve", "scale"})
 
 
 def _clean(text: str, limit: int) -> str:
@@ -25,9 +32,12 @@ def _clean(text: str, limit: int) -> str:
 
 def line(source: str, command: str, where: str, reply: str) -> str:
     """The log line for one request (see the module doc)."""
-    verb = _clean((command or "").split(maxsplit=1)[0] if (command or "").strip() else "-", 32)
+    first, _, rest = (command or "").strip().partition(" ")
+    verb = _clean(first or "-", 32)
     parts = [time.strftime("%Y-%m-%dT%H:%M:%S%z"), source, f"verb={verb}",
              f"where={_clean(where or '', WHERE_MAX)!r}"]
+    if first.lower() in HEARD_VERBS:
+        parts.append(f"heard={_clean(rest.strip(), HEARD_MAX)!r}")
     if (reply or "").startswith("ERR"):
         parts.append(f"reply={_clean(reply, ERR_MAX)!r}")
     return " ".join(parts)

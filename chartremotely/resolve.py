@@ -15,14 +15,22 @@ Matching runs in tiers, highest score wins:
      650  the query COVERS the name, plus extra words   ("john deere")
      600  consonant skeletons match                     ("volunteer")
      400  fuzzy, as a last resort
+
+:func:`decide` sits on top: it also scores the words run together ("shop if
+y" is "shopify"), treats share classes of one company as one answer, lets
+the symbols this Mac charted recently settle a near-tie, and - when two
+different companies are still too close to call - returns both, so the
+reply can ask "Did you mean ...?" instead of guessing. A confident wrong
+ticker is worse than a question.
 """
 
 from __future__ import annotations
 
 import difflib
 import re
+from dataclasses import dataclass, field
 
-__all__ = ["candidates", "normalize", "phonetic", "resolve", "spelled"]
+__all__ = ["Decision", "candidates", "decide", "normalize", "phonetic", "resolve", "spelled"]
 
 # Corporate furniture, stripped from both sides before comparison. "and"
 # is here because "&" normalises to it, so DEERE & CO reduces to "deere".
@@ -58,6 +66,8 @@ ALIASES = {
     "callalon": "QCOM",     # nasal "Qualcomm"
     "ge aerospace": "GE",   # still filed as GENERAL ELECTRIC CO
     "ge aviation": "GE",
+    "google": "GOOGL",      # filed as Alphabet Inc.
+    "facebook": "META",     # filed as Meta Platforms
 }
 
 # Soundex-style consonant coding: vowels carry almost no information in a
@@ -85,6 +95,16 @@ MIN_PREFIX = 4
 MIN_FUZZY = 5
 FUZZY_FLOOR = 0.82
 NAME_COVERAGE = 0.6       # how much of the company name the query must cover
+#: Two different companies scoring within this of each other is a question.
+MARGIN = 10.0
+#: A symbol charted recently wins when it scores within this of the best -
+#: unless the best is the ticker itself or the exact company name.
+PRIOR_MARGIN = 25.0
+CERTAIN = 900.0
+#: A close-scoring name far less prominent than the best one (by its place
+#: in the SEC file) is no real contender: "robinhood" is HOOD, not a fund.
+def _contends(rank: int, top_rank: int) -> bool:
+    return rank <= 4 * top_rank + 400
 
 
 def normalize(text: str) -> str:
@@ -195,13 +215,85 @@ def candidates(query: str, rows: list[dict]) -> list[tuple[float, str, str]]:
     return out
 
 
-def resolve(query: str, rows: list[dict]) -> str | None:
-    """Best ticker for a spoken query, or None when nothing is convincing."""
+@dataclass(frozen=True)
+class Decision:
+    """What a spoken company name came to.
+
+    ``ticker`` is set only when the answer is clear. ``options`` holds the
+    (ticker, spoken name) pairs too close to call - never set together with
+    ``ticker``. Neither set means nothing matched.
+    """
+
+    ticker: str | None = None
+    options: list[tuple[str, str]] = field(default_factory=list)
+
+    def question(self) -> str:
+        """'Did you mean PLTR (Palantir Technologies) or FLUT (Flutter Entertainment)?'"""
+        said = [f"{t} ({n})" for t, n in self.options]
+        return "Did you mean " + ", ".join(said[:-1]) + " or " + said[-1] + "?"
+
+
+def spoken_name(name: str) -> str:
+    """'PALANTIR TECHNOLOGIES INC.' -> 'Palantir Technologies' (three words at most)."""
+    words = strip_suffixes(normalize(name)).split()[:3]
+    return " ".join(words).title()
+
+
+def _ranked(query: str, rows: list[dict]) -> list[tuple[float, str, str]]:
+    """Candidates for the query and for its words run together, best per ticker."""
+    best: dict[str, tuple[float, str, str]] = {}
+    forms = [query]
+    # "and" stays in: "pal and tear" run together sounds like Palantir. Words
+    # that are all filler are still refused, run together or not.
+    words = normalize(query).split()
+    if len(words) > 1 and set(words) - STOPWORDS:
+        forms.append("".join(words))
+    for form in forms:
+        for cand in candidates(form, rows):
+            if cand[1] not in best or cand[0] > best[cand[1]][0]:
+                best[cand[1]] = cand
+    return sorted(best.values(), key=lambda c: -c[0])
+
+
+def decide(query: str, rows: list[dict], recent: list[str] | tuple = ()) -> Decision:
+    """The ticker for a spoken name, the options to ask about, or nothing.
+
+    ``recent`` is the symbols this Mac charted lately, most recent first;
+    it only ever settles a near-tie (see :data:`PRIOR_MARGIN`).
+    """
     letters = spelled(query)
     if letters and any(r["t"] == letters for r in rows):
-        return letters
+        return Decision(letters)
     direct = ALIASES.get(normalize(query))
     if direct:
-        return direct
-    ranked = candidates(query, rows)
-    return ranked[0][1] if ranked else None
+        return Decision(direct)
+    ranks = {r["t"]: r.get("r", 0) for r in rows}
+    ranked = _ranked(query, rows)
+    if not ranked:
+        return Decision()
+    # One company, many share classes (F, F-PB, F-PC...): one answer, the best.
+    companies: list[tuple[float, str, str]] = []
+    seen: set[str] = set()
+    for cand in ranked:
+        key = strip_suffixes(normalize(cand[2]))
+        if key not in seen:
+            seen.add(key)
+            companies.append(cand)
+    top = companies[0][0]
+    order = {t.upper(): i for i, t in reversed(list(enumerate(recent)))}
+    if top < CERTAIN:
+        known = [c for c in companies if c[1] in order and top - c[0] <= PRIOR_MARGIN]
+        if known:
+            return Decision(min(known, key=lambda c: order[c[1]])[1])
+    top_rank = ranks.get(companies[0][1], 0)
+    close = [c for c in companies if top - c[0] <= MARGIN
+             and (c is companies[0] or _contends(ranks.get(c[1], 0), top_rank))]
+    if len(close) == 1:
+        return Decision(close[0][1])
+    return Decision(options=[(t, spoken_name(n)) for _, t, n in close[:3]])
+
+
+def resolve(query: str, rows: list[dict], recent: list[str] | tuple = ()) -> str | None:
+    """Best ticker for a spoken query, or None when nothing is convincing or
+    the answer is too close to call (see :func:`decide`)."""
+    return decide(query, rows, recent).ticker

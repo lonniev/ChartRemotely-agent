@@ -28,7 +28,7 @@ import threading
 import time
 from collections.abc import Callable
 
-from . import config, keystore, mcpclient, requestlog
+from . import config, keystore, mcpclient, recent, requestlog
 
 ERR = "ERR "
 #: How long a spoken reply waits for an early refusal before handing off.
@@ -134,6 +134,9 @@ def send(command: str, where: str, cfg: dict | None = None) -> str:
         payload = _call(base, tool, envelope)
         box["payload"] = payload
         settle(base, npub, tool, wanted, payload)
+        if tool == "chart_show_chart" and refusal(payload) is None \
+                and payload.get("error_code") not in PROOF_CODES:
+            recent.remember(args["security"])
         done.set()
 
     threading.Thread(target=work, name=f"call-{tool}", daemon=True).start()
