@@ -32,6 +32,9 @@ NAME = "ChartRemotely"
 #: The Shortcut older setups made, removed from the library by setup. The
 #: ``shortcuts`` command can list but not delete; "Shortcuts Events" can.
 RETIRED = "ChartRemotely Ask"
+#: Speak Text's rate (0 to 1; Siri's own is 0.5). Replies are short and
+#: expected, so a person follows them brisker than Siri's default.
+SPEAK_RATE = 0.6
 
 
 def template() -> bytes:

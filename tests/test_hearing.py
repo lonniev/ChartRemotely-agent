@@ -246,6 +246,9 @@ def test_the_shortcut_records_posts_branches_on_the_marker_asks_one_line_posts_t
     strip = actions[11]["WFWorkflowActionParameters"]
     assert (strip["WFReplaceTextFind"], strip["WFReplaceTextReplace"]) == (voice.TYPE, "")
 
+    speaks = _params(actions, "speaktext")
+    assert [s["WFSpeakTextRate"] for s in speaks] == [shortcut.SPEAK_RATE] * 2, "brisk, not slow"
+
     asks = _params(actions, "ask")
     assert len(asks) == 1, "one text box"
     ask = asks[0]

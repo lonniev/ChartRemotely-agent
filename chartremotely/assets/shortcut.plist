@@ -669,6 +669,8 @@
 			<string>is.workflow.actions.speaktext</string>
 			<key>WFWorkflowActionParameters</key>
 			<dict>
+				<key>WFSpeakTextRate</key>
+				<real>0.6</real>
 				<key>WFSpeakTextWait</key>
 				<true/>
 				<key>WFText</key>
@@ -751,6 +753,8 @@
 			<string>is.workflow.actions.speaktext</string>
 			<key>WFWorkflowActionParameters</key>
 			<dict>
+				<key>WFSpeakTextRate</key>
+				<real>0.6</real>
 				<key>WFSpeakTextWait</key>
 				<true/>
 				<key>WFText</key>
