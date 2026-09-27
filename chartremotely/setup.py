@@ -16,7 +16,10 @@ again is always safe:
 4. **Services**: the listener and the relay, under launchd.
 5. **Permissions**: Accessibility and Screen Recording, asked for by the
    services' own Python, since that is the process macOS grants them to.
-6. **The voice Shortcut**: this Mac's copy, opened for import.
+6. **Hearing**: the Whisper speech model, fetched once (about 1.6 GB), and
+   the owner's display names, so a sentence can say where.
+7. **The Shortcuts**: this Mac's "ChartRemotely" (one spoken sentence) and
+   "ChartRemotely Ask" (three questions), opened for import.
 """
 
 from __future__ import annotations
@@ -238,15 +241,26 @@ def run(ask: Ask = input, say: Say = print, operator_url: str = OPERATOR_URL) ->
         granted = services.probe_permissions(request=False, out=probe)
     say("Accessibility and Screen Recording are allowed.")
 
-    # 6. The voice Shortcut.
+    # 6. Hearing: the speech model, and the display names a sentence may say.
+    from . import displays, hearing
+
+    try:
+        hearing.fetch_model(say)
+    except Exception as exc:  # noqa: BLE001 - the Ask Shortcut works without it
+        say(f"The speech model could not be fetched ({type(exc).__name__}); run setup again later.")
+    if displays.refresh() is not None:
+        say(f"Displays you can name: {', '.join(displays.load()) or 'none yet'}.")
+
+    # 7. The Shortcuts.
     from . import shortcut
 
-    made = shortcut.build(url, token)
-    subprocess.run(["open", str(made)], check=False)
-    say("Add the ChartRemotely Shortcut when it opens; iCloud brings it to your iPhone, iPad and Watch.")
+    for made in shortcut.build_all(url, token):
+        subprocess.run(["open", str(made)], check=False)
+    say("Add both Shortcuts when they open; iCloud brings them to your iPhone, iPad and Watch.")
 
     say("")
-    say("Done. Say “Hey Siri, ChartRemotely” from any of your devices.")
+    say("Done. Say “Hey Siri, ChartRemotely”, then one sentence: “Palantir, half, on mac mini”.")
+    say("“Hey Siri, ChartRemotely Ask” asks the three questions instead.")
     if npub:
         say(f"Your npub: {npub}")
     say(f"Sign in at {SITE} to see your screens.")

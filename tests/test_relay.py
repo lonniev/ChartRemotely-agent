@@ -141,10 +141,12 @@ def test_the_wire_logic_imports_without_the_macos_drivers():
     import ast
     from pathlib import Path
 
-    forbidden = {"Quartz", "AppKit", "ApplicationServices", "CoreFoundation"}
+    # MLX and numpy too: hearing imports them only when a sentence is heard.
+    forbidden = {"Quartz", "AppKit", "ApplicationServices", "CoreFoundation",
+                 "mlx", "mlx_whisper", "numpy", "huggingface_hub"}
     for name in ("relay", "resolve", "scales", "config", "registry", "snapshot", "push", "guilock",
                  "mcpclient", "keystore", "services", "tailnet", "shortcut", "setup", "patron",
-                 "requestlog", "understand", "recent"):
+                 "requestlog", "understand", "recent", "hearing", "displays", "voice"):
         tree = ast.parse(Path(f"chartremotely/{name}.py").read_text())
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):

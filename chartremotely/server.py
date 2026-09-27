@@ -8,6 +8,9 @@ Clients talk to it with an ordinary HTTPS request, which matters more than it
 sounds: Shortcuts' SSH action re-prompts for permission every time the
 shortcut is edited and needs a key per device, while Get Contents of URL
 needs neither.
+
+A POST marked ``?hear`` (or sent as ``audio/*``) is a recorded sentence
+instead of a command: see :mod:`voice`.
 """
 
 from __future__ import annotations
@@ -17,11 +20,24 @@ import secrets
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-from . import config, patron, requestlog
+from . import config, displays, hearing, patron, requestlog
 from .vocab import answer
 
 #: Verbs answered here, for free: they look something up and leave the chart alone.
 LOOKUPS = frozenset({"resolve", "scale"})
+
+
+def is_recording(query: str, content_type: str | None) -> bool:
+    """Is this POST a recorded sentence rather than a typed command?
+
+    Tailscale Serve forwards only ``/chart``, so a recording arrives on the
+    same path, told apart by ``?hear`` (the Shortcut's flag) or an audio
+    Content-Type.
+    """
+    if "hear" in urllib.parse.parse_qs(query, keep_blank_values=True):
+        return True
+    kind = (content_type or "").split(";")[0].strip().lower()
+    return kind.startswith("audio/")
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -39,11 +55,17 @@ class Handler(BaseHTTPRequestHandler):
         return bool(offered) and secrets.compare_digest(str(offered), self.token)
 
     def do_POST(self) -> None:
-        if urllib.parse.urlparse(self.path).path not in ("/chart", "/"):
+        parsed = urllib.parse.urlparse(self.path)
+        if parsed.path not in ("/chart", "/"):
             return self._reply(404, "ERR not found")
         if not self._authorised(self.headers.get("X-Token")):
             return self._reply(403, "ERR forbidden")
-        length = int(self.headers.get("Content-Length") or 0)
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            return self._reply(400, "ERR bad length")
+        if is_recording(parsed.query, self.headers.get("Content-Type")):
+            return self._hear(length)
         raw = self.rfile.read(length).decode("utf-8", "replace").strip()
         where = ""
         # Shortcuts posts JSON most cleanly; curl and scripts post raw text.
@@ -55,6 +77,33 @@ class Handler(BaseHTTPRequestHandler):
             except (ValueError, AttributeError):
                 return self._reply(400, "ERR bad JSON")
         self._answer(raw, where)
+
+    def _hear(self, length: int) -> None:
+        """A recorded sentence: hear it, understand it, answer it (see :mod:`voice`).
+
+        Too long a recording is refused without being kept, in words the
+        Shortcut can speak.
+        """
+        if length > hearing.MAX_BYTES:
+            self._discard(length)
+            return self._reply(200, f"ERR That was longer than {int(hearing.MAX_SECONDS)} seconds. Say it shorter.")
+        audio = self.rfile.read(length) if length > 0 else b""
+        from . import voice
+
+        reply = voice.respond(audio, self.headers.get("Content-Type"))
+        self._reply(200, reply)
+
+    def _discard(self, length: int, limit: int = 32 * 1024 * 1024) -> None:
+        """Read and drop a body we refuse, so the client hears the refusal
+        rather than a reset connection; past ``limit``, just hang up after."""
+        if length > limit:
+            self.close_connection = True
+            return
+        while length > 0:
+            chunk = self.rfile.read(min(length, 65536))
+            if not chunk:
+                break
+            length -= len(chunk)
 
     def do_GET(self) -> None:
         parsed = urllib.parse.urlparse(self.path)
@@ -95,4 +144,7 @@ class Handler(BaseHTTPRequestHandler):
 def serve(port: int | None = None) -> None:
     cfg = config.load()
     Handler.token = config.ensure_token()
+    # Load the speech model and the display names now, not on the first sentence.
+    hearing.warm_in_background()
+    displays.refresh_in_background()
     HTTPServer(("127.0.0.1", port or cfg["port"]), Handler).serve_forever()

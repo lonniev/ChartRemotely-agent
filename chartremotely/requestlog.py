@@ -20,6 +20,8 @@ import time
 WHERE_MAX = 64
 ERR_MAX = 200
 HEARD_MAX = 60
+#: A whole sentence heard by Whisper is longer than one lookup's argument.
+SENTENCE_MAX = 120
 #: The verbs whose argument is logged as ``heard=``; see the module doc.
 HEARD_VERBS = frozenset({"resolve", "scale"})
 
@@ -47,6 +49,16 @@ def request(source: str, command: str, where: str, reply: str) -> None:
     """Write :func:`line` to stderr. Never raises: logging must not cost a reply."""
     try:
         print(line(source, command, where, reply), file=sys.stderr, flush=True)
+    except (OSError, ValueError):
+        pass
+
+
+def heard(source: str, text: str) -> None:
+    """What Whisper heard for one recording (``heard=``, at most :data:`SENTENCE_MAX`
+    characters). The text only - the audio is never logged. Never raises."""
+    try:
+        print(f"{time.strftime('%Y-%m-%dT%H:%M:%S%z')} {source} heard={_clean(text or '', SENTENCE_MAX)!r}",
+              file=sys.stderr, flush=True)
     except (OSError, ValueError):
         pass
 

@@ -19,6 +19,9 @@ macos = [
   "pyobjc-framework-Cocoa>=10",
   "pyobjc-framework-Quartz>=10",
   "pyobjc-framework-Security>=10",
+  # Hears a whole spoken sentence on the Mac's GPU (MLX), so it runs only on
+  # Apple silicon. Its model, whisper-large-v3-turbo, is fetched by setup.
+  "mlx-whisper>=0.4.3; sys_platform == 'darwin' and platform_machine == 'arm64'",
 ]
 # `chartremotely setup` makes and proves Nostr identities. The key and proof
 # code is the tollbooth-dpyc SDK's own, never rewritten here.

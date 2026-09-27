@@ -35,8 +35,9 @@ def test_a_tool_answer_prefers_structured_content_then_text_json():
 
 # -- the voice Shortcut ---------------------------------------------------------
 
-def test_the_template_carries_placeholders_and_no_ones_address_or_token():
-    raw = shortcut.template().decode()
+@pytest.mark.parametrize("name", list(shortcut.TEMPLATES))
+def test_the_template_carries_placeholders_and_no_ones_address_or_token(name):
+    raw = shortcut.template(name).decode()
     assert raw.count(shortcut.URL_MARK) >= 1 and raw.count(shortcut.TOKEN_MARK) >= 1
     assert ".ts.net" not in raw, "a real tailnet address leaked into the template"
     # Agent tokens are 43-character urlsafe strings; none may sit in a <string>.
@@ -62,8 +63,9 @@ def test_the_shortcut_sends_right_after_where_and_speaks_only_the_reply():
     assert said["OutputUUID"] == actions[where + 1]["WFWorkflowActionParameters"]["UUID"]
 
 
-def test_filling_the_template_changes_the_placeholders_and_nothing_else():
-    raw = shortcut.template()
+@pytest.mark.parametrize("name", list(shortcut.TEMPLATES))
+def test_filling_the_template_changes_the_placeholders_and_nothing_else(name):
+    raw = shortcut.template(name)
     filled = shortcut.fill(raw, "https://mac.example.ts.net/chart", "T0KEN")
     text = plistlib.dumps(filled).decode()
     assert shortcut.URL_MARK not in text and shortcut.TOKEN_MARK not in text
@@ -272,7 +274,8 @@ def test_a_made_key_never_reaches_the_agents_config(monkeypatch, tmp_path):
     monkeypatch.setattr(services, "probe_permissions",
                         lambda request, out: {"accessibility": True, "screen_recording": True})
     built = []
-    monkeypatch.setattr(shortcut, "build", lambda url, token: built.append(url) or tmp_path / "x.shortcut")
+    monkeypatch.setattr(shortcut, "build_all", lambda url, token: built.append(url) or [tmp_path / "x.shortcut"])
+    _no_hearing(monkeypatch)
     monkeypatch.setattr(setup.subprocess, "run", lambda *a, **k: None)
 
     answers = iter(["3", "Desk", "n"])
@@ -285,6 +288,13 @@ def test_a_made_key_never_reaches_the_agents_config(monkeypatch, tmp_path):
     assert kept == [NPUB], "the made key is handed to the human's Keychain"
     assert built == ["https://mac.example.ts.net/chart"]
     assert not any(NSEC in s for s in said), "the key is never printed"
+
+
+def _no_hearing(monkeypatch):
+    """No test downloads the speech model or asks the operator for display names."""
+    from chartremotely import displays, hearing
+    monkeypatch.setattr(hearing, "fetch_model", lambda say: False)
+    monkeypatch.setattr(displays, "refresh", lambda *a, **k: None)
 
 
 def _stand_in_the_mac(monkeypatch, tmp_path, answers):
@@ -300,8 +310,9 @@ def _stand_in_the_mac(monkeypatch, tmp_path, answers):
     monkeypatch.setattr(services, "install", lambda command: None)
     monkeypatch.setattr(services, "probe_permissions",
                         lambda request, out: {"accessibility": True, "screen_recording": True})
-    monkeypatch.setattr(shortcut, "build", lambda url, token: tmp_path / "x.shortcut")
+    monkeypatch.setattr(shortcut, "build_all", lambda url, token: [tmp_path / "x.shortcut"])
     monkeypatch.setattr(setup.subprocess, "run", lambda *a, **k: None)
+    _no_hearing(monkeypatch)
     vault = {}
     monkeypatch.setattr(keystore, "save_token", lambda npub, token: vault.__setitem__(npub, token))
     monkeypatch.setattr(keystore, "load_token", lambda npub: vault.get(npub))
