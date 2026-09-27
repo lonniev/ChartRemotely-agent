@@ -121,8 +121,21 @@ expired. Answer the DM on your phone to renew." — a fresh DM is already on its
 way, and once you answer it (within about half an hour) the next command
 works again.
 
+**What Siri heard.** Dictation matches against all of English, so the Mac
+repairs what it hears against the three small vocabularies it actually needs:
+companies in the SEC list, the ten time frames, and your display names. A
+scale may be a mnemonic, a bar size ("thirty minutes", "an hour", "four
+hours", "a day") or one word that sounds like exactly one mnemonic ("have",
+"alf" are half). A company may be mis-heard ("volunteer", "pal and tear" are
+Palantir; "shop if y" is Shopify); when two companies are too close to call
+you are asked - "Did you mean PS (Pershing Square) or MSGS (Madison Square
+Garden)?" - rather than shown the wrong chart, and the symbols you chart
+lately settle a near-tie. `understand()` parses a whole sentence the same way
+("Palantir half on the mini").
+
 Each command handled is logged as one line — time, the command's first word,
-the "Where?" as said, and the reply if it was an ERR — plus one line when its
+the "Where?" as said, what was heard for a company or scale lookup, and the
+reply if it was an ERR — plus one line when its
 tool call ends (the tool, "Where?" and any refusal) — to
 `~/Library/Logs/chartremotely-serve.log` (voice) or `chartremotely-relay.log`
 (from the operator). Never a token, a secret or a picture.

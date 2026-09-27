@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `understand.understand(text, *, recent, displays)`: one utterance ("Palantir half on mac mini", "shop thirty minutes", "apple as is on desk") becomes an `Understanding` - ticker, company, scale (a mnemonic or "as is"), where (as said; the operator re-matches it), the ticker options when the company is too close to call, what was heard, and what is still missing ("company", "scale"). Pure and deterministic, no LLM. The entry point for whole-utterance transcriptions (stage 2).
+- A personal prior: the symbols this Mac charted successfully, most recent first (at most 50, tickers only), in `~/.config/chartremotely/recent.json`. A near-tie between companies goes to the one you chart.
+
+### Changed
+- "What scale?" understands bar sizes for every preset ("thirty minutes" and "half an hour" are half, "an hour" hourly, "four hours" swing, "a day" daily, "a week" weekly) and one mis-heard word that sounds like exactly one mnemonic ("have", "halve", "haff", "alf" are half). A word near two mnemonics is still refused.
+- "Which company?" asks instead of guessing when two different companies are too close to call: "ERR Did you mean PS (Pershing Square) or MSGS (Madison Square Garden)?". Share classes of one company count once, and a far less prominent namesake is no contender ("robinhood" is HOOD). Words run together are tried too ("shop if y" is Shopify, "pal and tear" Palantir); "google" and "facebook" resolve.
+- The request log shows what was heard for the free `resolve` and `scale` lookups (`heard=`, 60 characters), so a mis-heard word can be seen. Every other verb still logs no arguments.
+
 ## [0.2.11] - 2026-09-26
 
 ### Fixed

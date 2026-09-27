@@ -16,7 +16,18 @@ Two rules the callers depend on:
 
 from __future__ import annotations
 
-from . import guilock, registry, requestlog, resolve, scales, snapshot, symbol, timeframe, window
+from . import (
+    guilock,
+    recent,
+    registry,
+    requestlog,
+    resolve,
+    scales,
+    snapshot,
+    symbol,
+    timeframe,
+    window,
+)
 from .answer import Answer
 
 ERR = "ERR "
@@ -42,18 +53,32 @@ def _present() -> str | None:
 
 
 def cmd_resolve(spoken: str) -> str:
-    """A spoken company name, to a ticker."""
+    """A spoken company name, to a ticker.
+
+    Two companies too close to call are a question, not a guess: "ERR Did
+    you mean PLTR (Palantir Technologies) or FLUT (Flutter Entertainment)?"
+    The symbols charted lately (:mod:`recent`) settle a near-tie first.
+    """
     if not spoken.strip():
         return ERR + "I didn't catch a company name."
     try:
-        ticker = resolve.resolve(spoken, registry.load())
+        decision = resolve.decide(spoken, registry.load(), recent.load())
     except Exception as exc:
         return ERR + _short(exc)
-    return ticker or ERR + f"no match for {spoken!r}"
+    if decision.ticker:
+        return decision.ticker
+    if decision.options:
+        return ERR + decision.question()
+    return ERR + f"no match for {spoken!r}"
 
 
 def cmd_scale(spoken: str) -> str:
-    """A spoken time frame, to a mnemonic - without touching the chart."""
+    """A spoken time frame, to a mnemonic - without touching the chart.
+
+    Takes a mnemonic, a bar size ("thirty minutes", "an hour") or one word
+    that sounds like exactly one mnemonic ("have" is half); see
+    :func:`scales.mnemonic_for`.
+    """
     phrase = spoken.strip()
     if phrase.lower() in scales.AS_IS:
         return "as is"
@@ -86,6 +111,7 @@ def set_chart(ticker: str, scale: str = "") -> Answer:
     except Exception as exc:
         return Answer(ERR + _short(exc))
     shown = symbol.to_ticker(ticker)
+    recent.remember(shown or ticker)
 
     word = None
     if scale.strip() and scale.strip().lower() not in scales.AS_IS:

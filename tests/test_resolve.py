@@ -7,7 +7,7 @@ refusals, which is exactly the regression worth catching.
 
 import pytest
 
-from chartremotely.resolve import phonetic, resolve, spelled
+from chartremotely.resolve import decide, phonetic, resolve, spelled
 
 # A slice of the SEC registry, ranked as the real file is (lower = more
 # prominent). Includes the specific collisions that caused wrong answers.
@@ -94,3 +94,56 @@ def test_the_two_collisions_that_caused_wrong_answers():
     assert resolve("john deere", ROWS) == "DE"
     # A single shared word must not win: "aerospace" is half of Howmet.
     assert resolve("ge aerospace", ROWS) == "GE"
+
+
+# -- decide: questions instead of guesses, and a personal prior ---------------------------
+
+AMBIGUOUS = ROWS + [
+    {"t": "PLTX", "n": "Paltalk Exchange Inc", "r": 50},
+    {"t": "PS", "n": "Pershing Square Holdings", "r": 500},
+    {"t": "MSGS", "n": "Madison Square Garden Sports Corp", "r": 520},
+    {"t": "TSMWF", "n": "TAIWAN SEMICONDUCTOR MANUFACTURING CO LTD", "r": 900},
+    {"t": "F", "n": "FORD MOTOR CO", "r": 70},
+    {"t": "F-PB", "n": "FORD MOTOR CO", "r": 3000},
+    {"t": "SHOP", "n": "SHOPIFY INC.", "r": 90},
+    {"t": "RVI", "n": "Robinhood Ventures Fund I", "r": 2931},
+]
+
+
+def test_two_close_companies_are_a_question_not_a_guess():
+    d = decide("square", AMBIGUOUS)
+    assert d.ticker is None
+    assert [t for t, _ in d.options] == ["PS", "MSGS"]
+    assert d.question() == ("Did you mean PS (Pershing Square) or "
+                            "MSGS (Madison Square Garden)?")
+    assert resolve("square", AMBIGUOUS) is None
+
+
+def test_a_symbol_charted_lately_settles_the_near_tie():
+    assert decide("square", AMBIGUOUS, recent=["MSGS", "PLTR"]).ticker == "MSGS"
+    # most recent wins when both are remembered
+    assert decide("square", AMBIGUOUS, recent=["PS", "MSGS"]).ticker == "PS"
+
+
+def test_the_prior_never_overrides_an_exact_name_or_ticker():
+    assert decide("palantir", AMBIGUOUS, recent=["PLTX"]).ticker == "PLTR"
+    assert decide("pltr", AMBIGUOUS, recent=["PLTX"]).ticker == "PLTR"
+
+
+def test_share_classes_of_one_company_are_one_answer():
+    assert decide("ford", AMBIGUOUS).ticker == "F"
+    assert decide("taiwan semiconductor", AMBIGUOUS).ticker == "TSM"
+
+
+def test_a_far_less_prominent_namesake_is_no_contender():
+    # Both names start with "robinhood"; the fund is 20x further down the SEC file.
+    assert decide("robinhood", AMBIGUOUS).ticker == "HOOD"
+
+
+@pytest.mark.parametrize("heard,expected", [
+    ("shop if y", "SHOP"),        # the words run together
+    ("pal and tear", "PLTR"),     # run together, "and" kept: sounds like Palantir
+    ("google", "GOOGL"),          # filed as Alphabet
+])
+def test_more_mishearings(heard, expected):
+    assert resolve(heard, AMBIGUOUS + [{"t": "GOOGL", "n": "Alphabet Inc.", "r": 2}]) == expected
