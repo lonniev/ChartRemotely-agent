@@ -91,7 +91,34 @@ ignores everything sent to it.
 
 ## Voice
 
-"Hey Siri, ChartRemotely" asks three questions:
+"Hey Siri, ChartRemotely", then **one sentence**:
+
+> "Palantir, half, on mac mini." · "Shopify thirty minutes." · "Nvidia daily." · "GE hourly on the studio."
+
+Say the company, the scale, and - if it is not this Mac - "on" the display.
+The Shortcut records for about six seconds (tap to finish sooner where your
+device offers it) and sends the recording to the Mac that made it. That Mac
+hears it with **Whisper, running locally** on its own GPU (`mlx-whisper`,
+Apple silicon only) - nothing is sent to Apple or anyone else to transcribe -
+primed with the words it expects: the ten scale mnemonics, bar phrases like
+"thirty minutes", the companies you chart lately and the names of your
+displays. The recording is deleted as soon as it is heard; only the text is
+logged.
+
+If something is missing or unclear you are asked, and the Shortcut listens
+again (up to three times), keeping what it already understood: "I heard
+Nvidia but no scale. Say the scale, like half or daily. I'm listening." -
+"Daily." Or "Did you mean PS (Pershing Square) or MSGS (Madison Square
+Garden)? Say the one you meant. I'm listening."
+
+**First run.** `chartremotely setup` fetches the speech model,
+`whisper-large-v3-turbo` (about 1.6 GB, once, from Hugging Face). The
+listener loads it when it starts, so a sentence takes about a second to hear.
+Setup also learns your display names (the free `chart_agent_status`, asked at
+most every four hours) so "on the studio" is understood.
+
+**ChartRemotely Ask** is the fallback Shortcut, installed alongside: it asks
+three questions and takes typed or dictated answers -
 
 1. **Which company?** — a spoken name or a spelled ticker.
 2. **What scale?** — a time frame mnemonic (below), or "as is".
@@ -131,7 +158,8 @@ Palantir; "shop if y" is Shopify); when two companies are too close to call
 you are asked - "Did you mean PS (Pershing Square) or MSGS (Madison Square
 Garden)?" - rather than shown the wrong chart, and the symbols you chart
 lately settle a near-tie. `understand()` parses a whole sentence the same way
-("Palantir half on the mini").
+("Palantir half on the mini") - that is what the ChartRemotely Shortcut
+uses on the sentence Whisper heard.
 
 Each command handled is logged as one line — time, the command's first word,
 the "Where?" as said, what was heard for a company or scale lookup, and the
@@ -173,7 +201,9 @@ and runs `chartremotely setup`, which:
 3. gives the Mac its tailnet address with `tailscale serve`;
 4. installs the listener and the relay as launchd agents;
 5. asks macOS for Accessibility and Screen Recording for the Python that runs them;
-6. makes this Mac's ChartRemotely voice Shortcut and opens it for import.
+6. fetches the Whisper speech model (about 1.6 GB, once) and your display names;
+7. makes this Mac's two Shortcuts, "ChartRemotely" (one spoken sentence) and
+   "ChartRemotely Ask" (three questions), and opens them for import.
 
 Run it again at any time: finished steps are skipped. `chartremotely doctor`
 reports anything still missing.
