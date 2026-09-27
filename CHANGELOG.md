@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- Replies are spoken at rate 0.55: 0.6 was a touch too fast.
+
+## [0.3.0] - 2026-09-27
+
 Voice, heard on your own Mac. Everything from 0.2.12 to 0.2.17 in one minor release: one-sentence requests heard by Whisper, one Shortcut that falls back to typing, and a setup that says what it installs.
 
 ### Why Whisper
