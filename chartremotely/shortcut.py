@@ -5,8 +5,8 @@ placeholders where its address and token go. Talk, or type when it asks:
 
 * It records one sentence - "Palantir, half, on mac mini" - posts it to this
   Mac, which hears it with Whisper (:mod:`voice`), and speaks the reply. When
-  the reply is a question (it ends "I'm listening.") it records again, at
-  most three times.
+  the reply is a question (it ends "I'm listening.") it records again; the
+  third spoken miss asks its question in the text box instead.
 * When nothing usable was recorded (no microphone, silence, noise) the reply
   is ``TYPE:`` and a prompt: the Shortcut shows that prompt in a one-line
   text box and posts the typed sentence instead. On a Mac it goes straight

@@ -97,6 +97,20 @@ def test_a_follow_up_expires():
     assert ear.respond() == f"Which company at daily? {voice.LISTENING}"
 
 
+def test_the_third_spoken_miss_asks_in_the_text_box_and_keeps_what_was_heard():
+    ear = Ear("mumble", "Nvidia", "grumble")
+    assert ear.respond().endswith(voice.LISTENING)
+    assert ear.respond() == f"I heard Nvidia but no scale. Say the scale, like half or daily. {voice.LISTENING}"
+    assert ear.respond() == "TYPE:I heard Nvidia but no scale. Type the scale, like half or daily."
+    assert ear.typed("daily") == "sent set NVDA | daily to this Mac"
+
+
+def test_a_heard_request_resets_the_spoken_tries():
+    ear = Ear("mumble", "mumble", "Palantir half", "mumble")
+    ear.respond(), ear.respond(), ear.respond()
+    assert ear.respond().endswith(voice.LISTENING)
+
+
 def test_a_completed_request_is_not_carried_into_the_next():
     ear = Ear("Palantir half", "daily")
     ear.respond()

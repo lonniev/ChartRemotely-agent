@@ -6,6 +6,9 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- Speech gets three tries at a request, as Siri gives: the third spoken miss asks its question in the text box, with what was already heard kept.
+
 ## [0.2.14] - 2026-09-27
 
 ### Changed

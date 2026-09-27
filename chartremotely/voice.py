@@ -10,7 +10,9 @@ PLTR at half scale sent to mac mini. Good luck."
 A follow-up question ends with :data:`LISTENING`. The Shortcut records again
 when it hears that word, and what was understood the first time is held for
 :data:`FOLLOW_UP_SECONDS`: "Palantir" then "half" is one request, as is
-"Palantir half" then "PLTR" after "Did you mean PLTR or PLTX?".
+"Palantir half" then "PLTR" after "Did you mean PLTR or PLTX?". Speech gets
+:data:`VOICE_TRIES` chances, as Siri gives: the last spoken miss asks its
+question in the text box instead, with what was heard so far still held.
 
 When nothing usable was recorded - no microphone, silence, noise - the
 reply is not a sentence but :data:`TYPE` and a prompt. The Shortcut shows
@@ -42,25 +44,28 @@ TYPED_MAX = 200
 #: The word every follow-up question ends with; the Shortcut listens again on it.
 LISTENING = "I'm listening."
 FOLLOW_UP_SECONDS = 45.0
+#: Spoken tries at one request before the question moves to the text box.
+VOICE_TRIES = 3
 
 _pending: dict = {}
 _pending_lock = threading.Lock()
 
 
-def _held(now: float) -> Understanding | None:
+def _held(now: float) -> tuple[Understanding | None, int]:
+    """The request being completed and how many spoken tries it has had."""
     with _pending_lock:
         got = _pending.get("u")
         if got and now - _pending.get("at", 0.0) <= FOLLOW_UP_SECONDS:
-            return got
+            return got, _pending.get("misses", 0)
         _pending.clear()
-        return None
+        return None, 0
 
 
-def _hold(u: Understanding | None, now: float) -> None:
+def _hold(u: Understanding | None, now: float, misses: int = 0) -> None:
     with _pending_lock:
         _pending.clear()
         if u is not None:
-            _pending.update(u=u, at=now)
+            _pending.update(u=u, at=now, misses=misses)
 
 
 def merge(new: Understanding, old: Understanding | None) -> Understanding:
@@ -110,11 +115,14 @@ def command(u: Understanding) -> str:
 def _answer(text: str, rows: list[dict], lately: list[str], places: list[str],
             send: Callable[[str, str], str], at: float, typed: bool) -> str:
     """Understand one request, spoken or typed: ask for what is missing, or send it."""
-    got = merge(understand(text, recent=lately, displays=places, rows=rows), _held(at))
+    old, misses = _held(at)
+    got = merge(understand(text, recent=lately, displays=places, rows=rows), old)
     names = {t: resolve.spoken_name(r["n"]) for r in rows if (t := r["t"]) in got.ambiguous}
+    misses = misses if typed else misses + 1
+    typed = typed or misses >= VOICE_TRIES
     ask = question(got, names, "Type" if typed else "Say")
     if ask:
-        _hold(got, at)
+        _hold(got, at, misses)
         requestlog.request("type" if typed else "hear", "ask", got.where or "", "")
         return typing(ask) if typed else f"{ask} {LISTENING}"
     _hold(None, at)
