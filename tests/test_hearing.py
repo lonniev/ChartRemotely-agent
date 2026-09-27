@@ -15,6 +15,9 @@ from test_understand import ROWS
 
 from chartremotely import displays, hearing, keystore, shortcut
 
+#: A recording big enough to be one: anything under hearing.MIN_BYTES is a bare header.
+M4A = b"m4a-bytes" * 100
+
 
 def _wav(path: Path, frames: int, rate: int = hearing.RATE, channels: int = 1) -> None:
     with wave.open(str(path), "wb") as out:
@@ -35,7 +38,7 @@ class FakeAfconvert:
         self.args = args
         source, target = Path(args[-2]), Path(args[-1])
         self.folder = source.parent
-        assert source.read_bytes() == b"m4a-bytes", "the recording is handed over as sent"
+        assert source.read_bytes() == M4A, "the recording is handed over as sent"
         if not self.fail:
             _wav(target, self.frames, channels=self.channels)
         return subprocess.CompletedProcess(args, 1 if self.fail else 0)
@@ -45,7 +48,7 @@ class FakeAfconvert:
 
 def test_decode_asks_afconvert_for_16k_mono_pcm_and_leaves_nothing_behind():
     run = FakeAfconvert()
-    pcm = hearing.decode(b"m4a-bytes", "audio/x-m4a", run=run)
+    pcm = hearing.decode(M4A, "audio/x-m4a", run=run)
     assert run.args[:7] == [hearing.AFCONVERT, "-f", "WAVE", "-d", "LEI16@16000", "-c", "1"]
     assert run.args[-2].endswith(".m4a")
     assert len(pcm) == hearing.RATE * 2
@@ -59,16 +62,43 @@ def test_the_recording_type_picks_what_afconvert_reads():
     assert hearing.suffix_for("application/octet-stream") == ".m4a"
 
 
-@pytest.mark.parametrize("audio,run,said", [
-    (b"", FakeAfconvert(), "didn't hear anything"),
-    (b"x" * (hearing.MAX_BYTES + 1), FakeAfconvert(), "longer than 15 seconds"),
-    (b"m4a-bytes", FakeAfconvert(fail=True), "couldn't read"),
-    (b"m4a-bytes", FakeAfconvert(frames=int(hearing.RATE * 16)), "longer than 15 seconds"),
-    (b"m4a-bytes", FakeAfconvert(channels=2), "not in a shape"),
+@pytest.mark.parametrize("audio,run,said,unheard", [
+    (b"", FakeAfconvert(), "didn't hear anything", True),
+    # What a Mac mini (no microphone) sends once Record Audio is stopped: 28 bytes, a header.
+    (bytes.fromhex("0000001c667479704d344120000000004d3441206d70343269736f6d"),
+     FakeAfconvert(), "didn't hear anything", True),
+    (b"x" * (hearing.MAX_BYTES + 1), FakeAfconvert(), "longer than 15 seconds", False),
+    (M4A, FakeAfconvert(fail=True), "couldn't read", True),
+    (M4A, FakeAfconvert(frames=int(hearing.RATE * 16)), "longer than 15 seconds", False),
+    (M4A, FakeAfconvert(channels=2), "not in a shape", True),
 ])
-def test_a_recording_that_cannot_be_heard_says_why(audio, run, said):
-    with pytest.raises(hearing.HearingError, match=said):
+def test_a_recording_that_cannot_be_heard_says_why(audio, run, said, unheard):
+    with pytest.raises(hearing.HearingError, match=said) as got:
         hearing.decode(audio, "audio/m4a", run=run)
+    assert isinstance(got.value, hearing.Unheard) is unheard, "only too long a recording is spoken"
+
+
+def _pcm(level: int, seconds: float) -> bytes:
+    return int(level).to_bytes(2, "little", signed=True) * int(hearing.RATE * seconds)
+
+
+def test_silence_and_a_blip_are_not_usable_and_speech_is():
+    assert not hearing.usable(b"")
+    assert not hearing.usable(_pcm(0, 6)), "a Mac with no microphone records digital silence"
+    assert not hearing.usable(_pcm(20, 6)), "a quiet room"
+    assert not hearing.usable(_pcm(3000, 0.1)), "too short to be a word"
+    assert hearing.usable(_pcm(3000, 1.0))
+    assert hearing.usable(_pcm(-3000, 1.0))
+
+
+@pytest.mark.parametrize("text", ["", " ", ".", "Thank you.", "you", "Thanks for watching!", "[Music]", "Um..."])
+def test_what_whisper_makes_of_silence_is_filler(text):
+    assert hearing.filler(text)
+
+
+@pytest.mark.parametrize("text", ["Palantir half on mac mini.", "PLTR", "half", "Apple as is"])
+def test_a_request_is_not_filler(text):
+    assert not hearing.filler(text)
 
 
 def test_samples_are_float32_between_minus_one_and_one():
@@ -83,7 +113,7 @@ def test_transcription_without_mlx_is_a_sentence_not_a_crash(monkeypatch):
         raise ImportError("mlx_whisper")
     monkeypatch.setattr(hearing, "samples", lambda pcm: pcm)
     monkeypatch.setattr(hearing, "_transcribe", missing)
-    with pytest.raises(hearing.HearingError, match="cannot hear yet"):
+    with pytest.raises(hearing.Unheard, match="cannot hear yet"):
         hearing.transcribe(b"\x00\x00")
 
 
@@ -161,46 +191,116 @@ def test_no_list_is_asked_for_without_a_pairing_or_a_sign_in(monkeypatch, tmp_pa
     assert displays.load(path) == [] and displays.stale(path)
 
 
-# -- the voice Shortcut ------------------------------------------------------------------------
+# -- the Shortcut: talk, or type when it asks ----------------------------------------------
 
-def _voice_actions():
-    return plistlib.loads(shortcut.template(shortcut.NAME))["WFWorkflowActions"]
+def _actions():
+    return plistlib.loads(shortcut.template())["WFWorkflowActions"]
 
 
-def test_the_voice_shortcut_records_posts_the_file_and_speaks_the_reply():
-    actions = _voice_actions()
-    kinds = [a["WFWorkflowActionIdentifier"].removeprefix("is.workflow.actions.") for a in actions]
-    assert kinds == ["repeat.count", "recordaudio", "downloadurl", "speaktext",
-                     "conditional", "conditional", "exit", "conditional", "repeat.count"]
-    record, post, speak = (a["WFWorkflowActionParameters"] for a in actions[1:4])
+def _kinds(actions):
+    return [a["WFWorkflowActionIdentifier"].removeprefix("is.workflow.actions.") for a in actions]
+
+
+def _params(actions, kind):
+    return [a["WFWorkflowActionParameters"] for a in actions if _kinds([a])[0] == kind]
+
+
+def _said(post):
+    """The JSON a POST sends: {key: text or the output it carries}."""
+    got = {}
+    for item in post["WFJSONValues"]["Value"]["WFDictionaryFieldValueItems"]:
+        value = item["WFValue"]["Value"]
+        got[item["WFKey"]["Value"]["string"]] = value["attachmentsByRange"]["{0, 1}"]["OutputUUID"] \
+            if "attachmentsByRange" in value else value["string"]
+    return got
+
+
+def _headers(post):
+    return {i["WFKey"]["Value"]["string"]: i["WFValue"]["Value"]["string"]
+            for i in post["WFHTTPHeaders"]["Value"]["WFDictionaryFieldValueItems"]}
+
+
+def test_the_shortcut_records_posts_branches_on_the_marker_asks_one_line_posts_the_text_and_speaks():
+    from chartremotely import voice
+    actions = _actions()
+    kinds = _kinds(actions)
+    assert kinds == ["getdevicedetails", "repeat.count",
+                     "conditional", "downloadurl", "conditional", "recordaudio", "downloadurl", "conditional",
+                     "setvariable",
+                     "conditional", "repeat.count", "text.replace", "ask", "downloadurl", "setvariable",
+                     "conditional", "conditional", "speaktext", "exit", "conditional", "repeat.count", "exit",
+                     "conditional",
+                     "speaktext", "conditional", "conditional", "exit", "conditional", "repeat.count"]
+    record = actions[5]["WFWorkflowActionParameters"]
+    audio = actions[6]["WFWorkflowActionParameters"]
     assert (record["WFRecordingStart"], record["WFRecordingEnd"]) == ("Immediately", "After Time")
     assert record["WFRecordingTimeInterval"]["Value"] == {"Magnitude": "6", "Unit": "sec"}
-    assert post["WFHTTPMethod"] == "POST" and post["WFHTTPBodyType"] == "File"
-    assert post["WFURL"] == shortcut.URL_MARK + "?hear=1"
-    assert post["WFRequestVariable"]["Value"]["OutputUUID"] == record["UUID"]
-    headers = {i["WFKey"]["Value"]["string"]: i["WFValue"]["Value"]["string"]
-               for i in post["WFHTTPHeaders"]["Value"]["WFDictionaryFieldValueItems"]}
-    assert headers == {"X-Token": shortcut.TOKEN_MARK}
-    assert speak["WFText"]["Value"]["attachmentsByRange"]["{0, 1}"]["OutputUUID"] == post["UUID"]
+    assert audio["WFHTTPMethod"] == "POST" and audio["WFHTTPBodyType"] == "File"
+    assert audio["WFURL"] == shortcut.URL_MARK + "?hear=1"
+    assert audio["WFRequestVariable"]["Value"]["OutputUUID"] == record["UUID"]
+    assert _headers(audio) == {"X-Token": shortcut.TOKEN_MARK}
+
+    marker = actions[9]["WFWorkflowActionParameters"]
+    assert (marker["WFCondition"], marker["WFConditionalActionString"]) == (99, voice.TYPE)
+    assert marker["WFInput"]["Variable"]["Value"]["VariableName"] == "Reply"
+    strip = actions[11]["WFWorkflowActionParameters"]
+    assert (strip["WFReplaceTextFind"], strip["WFReplaceTextReplace"]) == (voice.TYPE, "")
+
+    asks = _params(actions, "ask")
+    assert len(asks) == 1, "one text box"
+    ask = asks[0]
+    assert ask["WFAskActionAllowsMultilineText"] is False, "Return sends it"
+    assert ask["WFInputType"] == "Text"
+    assert ask["WFAskActionPrompt"]["Value"]["attachmentsByRange"]["{0, 1}"]["OutputUUID"] == strip["UUID"], \
+        "the prompt is the listener's, after TYPE:"
+
+    typed = actions[13]["WFWorkflowActionParameters"]
+    assert typed["WFURL"] == shortcut.URL_MARK and typed["WFHTTPBodyType"] == "JSON"
+    assert _said(typed) == {"said": ask["UUID"]}
+    assert _headers(typed) == {"Content-Type": "application/json", "X-Token": shortcut.TOKEN_MARK}
+    spoken = actions[17]["WFWorkflowActionParameters"]["WFText"]["Value"]["attachmentsByRange"]["{0, 1}"]
+    assert spoken["OutputUUID"] == typed["UUID"], "the typed reply is spoken, then the Shortcut stops"
 
 
-def test_the_voice_shortcut_listens_again_only_after_a_question():
+def test_a_mac_goes_straight_to_the_typing_box():
+    actions = _actions()
+    device = actions[0]["WFWorkflowActionParameters"]
+    assert device["WFDeviceDetail"] == "Device Model"
+    mac = actions[2]["WFWorkflowActionParameters"]
+    assert (mac["WFCondition"], mac["WFConditionalActionString"]) == (99, "Mac")
+    assert mac["WFInput"]["Variable"]["Value"]["OutputUUID"] == device["UUID"]
+    blank = actions[3]["WFWorkflowActionParameters"]
+    assert _said(blank) == {"said": ""}, "a blank typed request asks for the box"
+    assert _kinds(actions[4:7]) == ["conditional", "recordaudio", "downloadurl"], "otherwise: record"
+    joined = actions[7]["WFWorkflowActionParameters"]
+    assert actions[8]["WFWorkflowActionParameters"]["WFInput"]["Value"]["OutputUUID"] == joined["UUID"]
+
+
+def test_a_spoken_question_records_again_and_a_typed_one_asks_again():
     from chartremotely import voice
-    actions = _voice_actions()
-    test = actions[4]["WFWorkflowActionParameters"]
-    assert test["WFCondition"] == 99 and test["WFConditionalActionString"].lower() in voice.LISTENING.lower()
-    assert [a["WFWorkflowActionParameters"]["WFControlFlowMode"] for a in actions[4:8] if "conditional" in
-            a["WFWorkflowActionIdentifier"]] == [0, 1, 2], "otherwise: stop"
-    assert actions[0]["WFWorkflowActionParameters"]["WFRepeatCount"] == 3
+    actions = _actions()
+    listen = actions[24]["WFWorkflowActionParameters"]
+    assert listen["WFCondition"] == 99 and listen["WFConditionalActionString"].lower() in voice.LISTENING.lower()
+    assert _kinds(actions[25:27]) == ["conditional", "exit"], "otherwise: stop"
+    again = actions[15]["WFWorkflowActionParameters"]
+    assert again["WFConditionalActionString"] == voice.TYPE, "a typed question comes back as TYPE:"
+    assert actions[1]["WFWorkflowActionParameters"]["WFRepeatCount"] == 3
+    assert actions[10]["WFWorkflowActionParameters"]["WFRepeatCount"] == 3
+    groups = {}
+    for a in actions:
+        p = a["WFWorkflowActionParameters"]
+        if "GroupingIdentifier" in p:
+            groups.setdefault(p["GroupingIdentifier"], []).append(p["WFControlFlowMode"])
+    assert all(modes[0] == 0 and modes[-1] == 2 for modes in groups.values()), "every block is closed"
 
 
-def test_both_shortcuts_are_built_and_signed_under_their_library_names(monkeypatch, tmp_path):
-    signed = []
-    monkeypatch.setattr(shortcut.subprocess, "run", lambda args, **k: signed.append(Path(args[-1]))
-                        or Path(args[-1]).write_bytes(Path(args[-3]).read_bytes()))
-    made = shortcut.build_all("https://mac.example.ts.net/chart", "T0KEN", tmp_path)
-    assert [p.name for p in made] == ["ChartRemotely.shortcut", "ChartRemotely Ask.shortcut"]
-    voice = plistlib.loads(made[0].read_bytes())
-    assert voice["WFWorkflowActions"][2]["WFWorkflowActionParameters"]["WFURL"] == \
-        "https://mac.example.ts.net/chart?hear=1"
+def test_the_one_shortcut_is_built_and_signed_under_its_library_name(monkeypatch, tmp_path):
+    monkeypatch.setattr(shortcut.subprocess, "run", lambda args, **k:
+                        Path(args[-1]).write_bytes(Path(args[-3]).read_bytes()))
+    made = shortcut.build("https://mac.example.ts.net/chart", "T0KEN", tmp_path)
+    assert made.name == "ChartRemotely.shortcut"
+    posts = _params(plistlib.loads(made.read_bytes())["WFWorkflowActions"], "downloadurl")
+    assert [p["WFURL"] for p in posts] == ["https://mac.example.ts.net/chart",
+                                           "https://mac.example.ts.net/chart?hear=1",
+                                           "https://mac.example.ts.net/chart"]
     assert not (tmp_path / "unsigned.shortcut").exists()
