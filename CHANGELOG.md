@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-09-27
+
 ### Changed
 - Replies are spoken at rate 0.55: 0.6 was a touch too fast.
 
