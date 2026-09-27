@@ -34,7 +34,7 @@ NAME = "ChartRemotely"
 RETIRED = "ChartRemotely Ask"
 #: Speak Text's rate (0 to 1; Siri's own is 0.5). Replies are short and
 #: expected, so a person follows them brisker than Siri's default.
-SPEAK_RATE = 0.6
+SPEAK_RATE = 0.55
 
 
 def template() -> bytes:
