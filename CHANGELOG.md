@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.14] - 2026-09-27
+
 ### Changed
 - One Shortcut: talk, or type when it asks. "ChartRemotely" records a sentence as before; when the Mac finds nothing usable in it - an empty or header-only file (a Mac mini, which has no microphone, sends 28 bytes), audio `afconvert` cannot read, under 0.3 s or quieter than a room, only what Whisper makes of silence ("Thank you.", "you"), a crash in hearing, or a Mac that cannot hear yet - the listener answers `TYPE:` and a prompt instead of a sentence to speak. The Shortcut shows that prompt in one single-line text box and posts the typed sentence (`{"said": ...}`) to the same `/chart` path, where it is understood by the same `understand()` and makes the same priced `chart_show_chart` call. A typed request that is missing something comes back as another `TYPE:` question, never "I'm listening.". Too long a recording is still spoken as an ERR.
 - On a Mac, the Shortcut goes straight to the text box (Get Device Details: the model contains "Mac"). Record Audio on a Mac mini with no microphone neither ends nor fails: it sits at 00:01 until stopped by hand.
