@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.12] - 2026-09-27
+
 ### Added
 - `understand.understand(text, *, recent, displays)`: one utterance ("Palantir half on mac mini", "shop thirty minutes", "apple as is on desk") becomes an `Understanding` - ticker, company, scale (a mnemonic or "as is"), where (as said; the operator re-matches it), the ticker options when the company is too close to call, what was heard, and what is still missing ("company", "scale"). Pure and deterministic, no LLM. The entry point for whole-utterance transcriptions (stage 2).
 - A personal prior: the symbols this Mac charted successfully, most recent first (at most 50, tickers only), in `~/.config/chartremotely/recent.json`. A near-tie between companies goes to the one you chart.
