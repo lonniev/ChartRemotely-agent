@@ -28,6 +28,10 @@ macos = [
 setup = ["tollbooth-dpyc[nostr]==0.90.0"]
 dev = ["pytest>=8", "ruff>=0.6"]
 
+[project.urls]
+Repository = "https://github.com/lonniev/ChartRemotely-agent"
+Changelog = "https://github.com/lonniev/ChartRemotely-agent/blob/main/CHANGELOG.md"
+
 [project.scripts]
 chartremotely = "chartremotely.cli:main"
 
