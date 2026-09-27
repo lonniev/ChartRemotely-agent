@@ -264,7 +264,7 @@ def test_a_made_key_never_reaches_the_agents_config(monkeypatch, tmp_path):
     _no_hearing(monkeypatch)
     monkeypatch.setattr(setup.subprocess, "run", lambda *a, **k: None)
 
-    answers = iter(["3", "Desk", "n"])
+    answers = iter(["", "3", "Desk", "n"])
     said = []
     assert setup.run(ask=lambda q: next(answers), say=said.append) == 0
 
@@ -311,7 +311,7 @@ def test_a_dm_proven_owner_keeps_the_sign_in_in_the_keychain_not_the_config(monk
         "chart_request_npub_proof": {"dpop_token": "seven-amber-door"},
         "chart_receive_npub_proof": {"success": True, "dpop_token": "seven-amber-door"},
         "chart_pair_agent": {"ok": True, "display": "Desk", "agent_id": "a1"}})
-    answers = iter(["1", NPUB, "", "Desk"])
+    answers = iter(["", "1", NPUB, "", "Desk"])
     said = []
     assert setup.run(ask=lambda q: next(answers), say=said.append) == 0
     assert vault == {NPUB: "seven-amber-door"}
@@ -325,7 +325,7 @@ def test_an_already_paired_mac_is_signed_in_for_voice_by_dm(monkeypatch, tmp_pat
         "chart_request_npub_proof": {"dpop_token": "seven-amber-door"},
         "chart_receive_npub_proof": {"success": True, "dpop_token": "seven-amber-door"}})
     config.update(operator_url="https://op.test", agent_id="a1", agent_secret="agent-secret")
-    answers = iter([NPUB, "y", ""])
+    answers = iter(["", NPUB, "y", ""])
     assert setup.run(ask=lambda q: next(answers), say=lambda s: None) == 0
     assert vault == {NPUB: "seven-amber-door"}
     assert "seven-amber-door" not in (tmp_path / "config.json").read_text()
@@ -337,11 +337,55 @@ def test_setup_removes_a_retired_ask_shortcut_and_names_any_it_could_not(monkeyp
         "chart_receive_npub_proof": {"success": True, "dpop_token": "seven-amber-door"}})
     config.update(operator_url="https://op.test", agent_id="a1", agent_secret="agent-secret")
     monkeypatch.setattr(shortcut, "remove_retired", lambda: (["ChartRemotely Ask"], ["ChartRemotely Ask 2"]))
-    answers = iter([NPUB, "y", ""])
+    answers = iter(["", NPUB, "y", ""])
     said = []
     assert setup.run(ask=lambda q: next(answers), say=said.append) == 0
-    assert "Removed “ChartRemotely Ask”; “ChartRemotely” does it all now." in said
-    assert "Delete “ChartRemotely Ask 2” in the Shortcuts app; “ChartRemotely” does it all now." in said
+    assert any(s.endswith("Removed “ChartRemotely Ask”; “ChartRemotely” does it all now.") for s in said)
+    assert any(s.endswith("Delete “ChartRemotely Ask 2” in the Shortcuts app; “ChartRemotely” does it all now.")
+               for s in said)
+
+
+def test_setup_says_what_it_installs_and_changes_nothing_when_declined(monkeypatch, tmp_path):
+    touched = []
+    monkeypatch.setattr(config, "load", lambda: touched.append("config") or {})
+    said = []
+    assert setup.run(ask=lambda q: "n", say=said.append) == 0
+    text = "\n".join(said)
+    assert "ChartRemotely setup" in text and "Version" in text and "Python" in text
+    assert all(name in text for name, _ in setup.PLAN)
+    assert said[-1].strip() == "Nothing was changed." and touched == []
+    assert not any("\033[" in s for s in said), "no colour codes when not printing to a terminal"
+
+
+def test_provenance_names_pypi_and_its_release_or_the_local_checkout(monkeypatch):
+    from importlib import metadata
+
+    class Dist:
+        version = "9.9.9"
+
+        def __init__(self, direct):
+            self.direct = direct
+            self.metadata = type("M", (), {"__getitem__": lambda s, k: "chartremotely",
+                                            "get_all": lambda s, k: ["Repository, https://example.test/repo"]})()
+
+        def read_text(self, name):
+            return self.direct
+
+    monkeypatch.setattr(metadata, "distribution", lambda name: Dist(None))
+    monkeypatch.setattr(setup, "__file__", "/venv/lib/python3.12/site-packages/chartremotely/setup.py")
+    rows = dict(setup.provenance())
+    assert rows["Version"] == "9.9.9"
+    assert rows["From"] == "PyPI  https://pypi.org/project/chartremotely/9.9.9/"
+    assert rows["Release"] == "https://example.test/repo/releases/tag/v9.9.9"
+
+    monkeypatch.setattr(metadata, "distribution", lambda name: Dist(json.dumps(
+        {"url": "file:///src/agent", "dir_info": {"editable": True}})))
+    rows = dict(setup.provenance())
+    assert rows["From"] == "/src/agent (editable)" and "Release" not in rows
+
+    monkeypatch.setattr(setup, "__file__", "/src/agent/chartremotely/setup.py")
+    rows = dict(setup.provenance())
+    assert rows["From"] == "source checkout /src/agent", "a source tree never claims PyPI"
 
 
 class Library:

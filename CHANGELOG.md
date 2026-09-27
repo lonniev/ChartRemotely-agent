@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- `chartremotely setup` opens by saying what is installing: description, version, where it came from (PyPI and its GitHub release, or a source checkout), and the Python it runs on. It then lists its six steps and asks before changing anything.
+- Setup's output is tidier: numbered step headings, ✓ and ! marks, aligned facts, and colour only on a terminal (`NO_COLOR` is honoured). The permission check's launchctl chatter and the speech model's cached-download progress bars no longer leak through.
+
 ## [0.2.15] - 2026-09-27
 
 ### Changed

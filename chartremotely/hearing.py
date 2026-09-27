@@ -243,7 +243,9 @@ def warm_in_background() -> threading.Thread:
 
 
 def fetch_model(say: Callable[[str], None] = print) -> bool:
-    """Download the model ahead of the first sentence (setup's step). Shows progress.
+    """Download the model ahead of the first sentence (setup's step).
+
+    Silent when it is already on this Mac; a download shows its progress.
 
     Returns whether it is ready. Skipped, with a reason, where it cannot run.
     """
@@ -255,7 +257,18 @@ def fetch_model(say: Callable[[str], None] = print) -> bool:
     except ImportError:
         say("The speech model's downloader is missing; reinstall ChartRemotely, then run setup.")
         return False
-    say(f"Fetching the speech model ({MODEL_SIZE}, once; later runs skip this)…")
+    from huggingface_hub.utils import disable_progress_bars, enable_progress_bars
+
+    disable_progress_bars()
+    try:
+        snapshot_download(repo_id=MODEL, local_files_only=True)
+        cached = True
+    except Exception:  # noqa: BLE001 - not cached yet: fetch it, with progress
+        cached = False
+    finally:
+        enable_progress_bars()
+    if cached:
+        return True
+    say(f"Fetching the speech model ({MODEL_SIZE}, once)…")
     snapshot_download(repo_id=MODEL)
-    say("The speech model is on this Mac.")
     return True

@@ -105,7 +105,10 @@ def probe_permissions(request: bool, out: Path, timeout: float = 30.0) -> dict:
     args = [executable(), "permissions", "--out", str(out)] + (["--request"] if request else [])
     path.write_text(render(PROBE_LABEL, args, keep_alive=False, log=LOG_DIR / "chartremotely-permissions.log"))
     subprocess.run(["launchctl", "bootout", f"{_domain()}/{PROBE_LABEL}"], capture_output=True, check=False)
-    subprocess.run(["launchctl", "bootstrap", _domain(), str(path)], check=True)
+    ran = subprocess.run(["launchctl", "bootstrap", _domain(), str(path)],
+                         capture_output=True, text=True, check=False)
+    if ran.returncode != 0:
+        raise ServiceError(f"launchd would not run the permission check: {(ran.stderr or ran.stdout).strip()[:200]}")
     try:
         deadline = time.time() + timeout
         while time.time() < deadline and not out.exists():
