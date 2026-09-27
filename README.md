@@ -78,6 +78,7 @@ chartremotely serve                         run the local listener
 chartremotely pair                          adopt this display to an operator
 chartremotely relay                         hold a connection open for the operator
 chartremotely doctor                        check everything the agent needs
+chartremotely token                         print the local listener's access token
 ```
 
 `serve` and `relay` are two different transports and most setups want both.
@@ -194,19 +195,23 @@ curl -fsSL https://chartremotely.tollbooth-dpyc.com/install.sh | sh
 
 That installs [uv](https://docs.astral.sh/uv/) if it is missing, installs this
 agent from PyPI (`uv tool install --python 3.12 'chartremotely[macos,setup]'`),
-and runs `chartremotely setup`, which:
+and runs `chartremotely setup`. Setup first says what is installing — version,
+where it came from, the Python it runs on — lists its six steps, and asks
+before changing anything:
 
-1. proves who owns the display — your existing npub by answering a Nostr DM,
-   a key already saved on this Mac, or a new key it makes and saves for you
-   in the Keychain and, through Safari, in iCloud Passwords;
-2. pairs this Mac with that identity, with no code to copy;
-3. gives the Mac its tailnet address with `tailscale serve`;
-4. installs the listener and the relay as launchd agents;
-5. asks macOS for Accessibility and Screen Recording for the Python that runs them;
-6. fetches the Whisper speech model (about 1.6 GB, once) and your display names;
-7. makes this Mac's Shortcut, "ChartRemotely" (talk, or type when it asks),
-   opens it for import, and removes a "ChartRemotely Ask" an older setup left
-   in your library.
+1. **Identity** — proves who owns the display (your existing npub by answering
+   a Nostr DM, a key already saved on this Mac, or a new key it makes and saves
+   for you in the Keychain and, through Safari, in iCloud Passwords), then
+   pairs this Mac with that identity, with no code to copy;
+2. **Tailscale** — gives the Mac its tailnet address with `tailscale serve`;
+3. **Services** — installs the listener and the relay as launchd agents;
+4. **Permissions** — asks macOS for Accessibility and Screen Recording for the
+   Python that runs them;
+5. **Hearing** — fetches the Whisper speech model (about 1.6 GB, once) and
+   your display names;
+6. **Shortcut** — makes this Mac's Shortcut, "ChartRemotely" (talk, or type
+   when it asks), opens it for import, and removes a "ChartRemotely Ask" an
+   older setup left in your library.
 
 Run it again at any time: finished steps are skipped. `chartremotely doctor`
 reports anything still missing.
@@ -246,7 +251,11 @@ switch to a grid - discovery follows, and takes about a second.
 
 ## Status
 
-Early. The thinkorswim adapter works; the interfaces are still moving.
+In service. Releases are published to PyPI and installed with the one-line
+installer above; a paired Mac takes commands by voice, from the web app at
+<https://chartremotely.tollbooth-dpyc.com>, and from any MCP client through the
+operator ([ChartRemotely-mcp](https://github.com/lonniev/ChartRemotely-mcp)).
+thinkorswim is the one charting application it drives today.
 
 ## License
 
