@@ -6,16 +6,23 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+Voice, heard on your own Mac. Everything from 0.2.12 to 0.2.17 in one minor release: one-sentence requests heard by Whisper, one Shortcut that falls back to typing, and a setup that says what it installs.
+
+### Why Whisper
+Why Whisper, not Siri: Siri's recognizer can't be taught a vocabulary, so it kept mishearing trader talk ("half" became "have"). ChartRemotely now hears you with Whisper on your own Mac, primed with company names, chart scales and your display names. Private, and about a second.
+
 ## [0.2.17] - 2026-09-27
 
 ### Changed
 - `chartremotely setup` opens by saying what is installing: description, version, where it came from (PyPI and its GitHub release, or a source checkout), and the Python it runs on. It then lists its six steps and asks before changing anything.
 - Setup's output is tidier: numbered step headings, ✓ and ! marks, aligned facts, and colour only on a terminal (`NO_COLOR` is honoured). The permission check's launchctl chatter and the speech model's cached-download progress bars no longer leak through.
 
-## [0.2.15] - 2026-09-27
+## [0.2.16] - 2026-09-27
 
 ### Changed
 - The Shortcut speaks its replies brisker (Speak Text rate 0.6; Siri's default is 0.5).
+
+## [0.2.15] - 2026-09-27
 
 ### Changed
 - Speech gets three tries at a request, as Siri gives: the third spoken miss asks its question in the text box, with what was already heard kept.
