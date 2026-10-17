@@ -1,0 +1,1 @@
+- The agent's `/mcp` calls carry `Authorization: Bearer anonymous`, so it keeps reaching an operator that turns on tollbooth-dpyc holder bearer. It still proves itself in its arguments.
