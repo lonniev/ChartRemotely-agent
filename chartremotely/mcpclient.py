@@ -60,8 +60,11 @@ class Client:
         self._ids = itertools.count(1)
 
     def _send(self, message: dict) -> dict:
+        # The operator refuses a request with no bearer. The agent proves
+        # itself in its arguments, so at the connection it is anonymous.
         headers = {"Content-Type": "application/json",
-                   "Accept": "application/json, text/event-stream"}
+                   "Accept": "application/json, text/event-stream",
+                   "Authorization": "Bearer anonymous"}
         if self.session:
             headers["mcp-session-id"] = self.session
         request = urllib.request.Request(
