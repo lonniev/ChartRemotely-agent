@@ -15,6 +15,7 @@ from __future__ import annotations
 import itertools
 import json
 import urllib.request
+from collections.abc import Callable
 
 PROTOCOL_VERSION = "2025-06-18"
 
@@ -53,22 +54,28 @@ def tool_payload(result: dict) -> dict:
 class Client:
     """A session with one operator's ``/mcp`` endpoint."""
 
-    def __init__(self, base_url: str, timeout: float = 60.0) -> None:
+    def __init__(self, base_url: str, timeout: float = 60.0, *, bearer: str = "",
+                 signer: Callable[[str, str, bytes], str] | None = None) -> None:
+        """``bearer`` is this Mac's holder token; ``signer`` signs each request
+        with a key (NIP-98) and wins over it. With neither, the call is anonymous."""
         self.url = base_url.rstrip("/") + "/mcp"
         self.timeout = timeout
+        self.bearer = bearer
+        self.signer = signer
         self.session: str | None = None
         self._ids = itertools.count(1)
 
     def _send(self, message: dict) -> dict:
-        # The operator refuses a request with no bearer. The agent proves
-        # itself in its arguments, so at the connection it is anonymous.
+        # Identity rides on the connection: a signed request, this Mac's holder
+        # token, or (for free tools) an anonymous bearer.
+        body = json.dumps(message).encode()
         headers = {"Content-Type": "application/json",
                    "Accept": "application/json, text/event-stream",
-                   "Authorization": "Bearer anonymous"}
+                   "Authorization": (self.signer("POST", self.url, body) if self.signer
+                                     else f"Bearer {self.bearer or 'anonymous'}")}
         if self.session:
             headers["mcp-session-id"] = self.session
-        request = urllib.request.Request(
-            self.url, data=json.dumps(message).encode(), headers=headers, method="POST")
+        request = urllib.request.Request(self.url, data=body, headers=headers, method="POST")
         try:
             with urllib.request.urlopen(request, timeout=self.timeout) as response:
                 self.session = response.headers.get("mcp-session-id") or self.session

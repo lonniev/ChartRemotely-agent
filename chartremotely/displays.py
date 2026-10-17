@@ -21,7 +21,7 @@ import threading
 import time
 from collections.abc import Callable
 
-from . import config, keystore, mcpclient, requestlog
+from . import config, holder, mcpclient, requestlog
 from .config import DATA_DIR
 
 PATH = DATA_DIR / "displays.json"
@@ -81,11 +81,11 @@ def refresh(cfg: dict | None = None, client_for=None, path=None) -> list[str] | 
     npub = cfg.get("owner_npub")
     if not (base and npub and cfg.get("agent_id")):
         return None
+    if not holder.connected(npub):
+        return None  # not signed in: a background refresh never opens a connection
     try:
-        token = keystore.load_token(npub)
-        if not token:
-            return None
-        payload = (client_for or mcpclient.Client)(base, timeout=30.0).call(TOOL, {"npub": npub, "dpop_token": token})
+        bearer = holder.bearer(base, npub)
+        payload = (client_for or mcpclient.Client)(base, timeout=30.0, bearer=bearer).call(TOOL, {"npub": npub})
     except Exception as exc:  # noqa: BLE001 - a missing list must never cost a reply
         requestlog.outcome("serve", TOOL, "", f"display list failed: {type(exc).__name__}")
         return None
