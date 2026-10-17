@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 from test_understand import ROWS
 
-from chartremotely import displays, hearing, keystore, shortcut
+from chartremotely import displays, hearing, holder, keystore, shortcut
 
 #: A recording big enough to be one: anything under hearing.MIN_BYTES is a bare header.
 M4A = b"m4a-bytes" * 100
@@ -163,20 +163,21 @@ def test_the_list_is_fetched_as_the_owner_and_cached_without_a_token(monkeypatch
     calls = []
 
     class Client:
-        def __init__(self, base, timeout):
-            self.base = base
+        def __init__(self, base, timeout, bearer=""):
+            self.base, self.bearer = base, bearer
 
         def call(self, tool, args):
-            calls.append((self.base, tool, dict(args)))
+            calls.append((self.base, self.bearer, tool, dict(args)))
             return STATUS
 
-    monkeypatch.setattr(keystore, "load_token", lambda npub: "seven-amber-door")
+    monkeypatch.setattr(holder, "connected", lambda npub: True)
+    monkeypatch.setattr(holder, "bearer", lambda base, npub: "dpyc_ha_conn")
     cfg = {"operator_url": "https://op.example/", "agent_id": "a1", "owner_npub": "npub1x"}
     path = tmp_path / "displays.json"
     assert displays.refresh(cfg, client_for=Client, path=path) == ["Mac mini", "Studio"]
-    assert calls == [("https://op.example", "chart_agent_status",
-                      {"npub": "npub1x", "dpop_token": "seven-amber-door"})]
-    assert "seven-amber-door" not in path.read_text()
+    # The connection proves the npub; no proof rides in the arguments.
+    assert calls == [("https://op.example", "dpyc_ha_conn", "chart_agent_status", {"npub": "npub1x"})]
+    assert "dpyc_ha_conn" not in path.read_text()
     assert displays.load(path) == ["Mac mini", "Studio"]
     assert not displays.stale(path)
     assert displays.stale(path, now=lambda: json.loads(path.read_text())["fetched_at"] + displays.MAX_AGE + 1)

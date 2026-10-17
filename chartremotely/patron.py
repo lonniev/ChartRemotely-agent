@@ -2,9 +2,9 @@
 
 The Mac plays by the operator's rules like any other MCP client. A chart
 change heard by voice is a call to the operator's own ``chart_show_chart``
-(and "read" to ``chart_read_chart``), made with the display owner's ``npub``
-and the ``dpop_token`` they earned by answering a Nostr DM - the same
-envelope every patron sends. The operator prices it, relays it to the named
+(and "read" to ``chart_read_chart``), made as the display owner's ``npub`` over
+this Mac's holder connection, into which the owner proved that npub by
+answering a Nostr DM. The operator prices it, relays it to the named
 display (blank "Where?": this Mac, by its agent_id), and that display's relay
 changes the chart and takes its picture. Nothing here drives the chart.
 
@@ -17,7 +17,7 @@ while the call finishes on its own and its outcome is logged.
 When the sign-in has expired the owner hears so, and one renewal runs in the
 background: a fresh ``chart_request_npub_proof`` DM, then
 ``chart_receive_npub_proof`` on a bounded, slowing schedule until they answer,
-and the new token goes back into the Keychain. The nsec is never asked for.
+which proves the npub into this Mac's connection again. The nsec is never asked for.
 
 Stdlib only (the Keychain behind a lazy import), like the relay.
 """
@@ -28,7 +28,7 @@ import threading
 import time
 from collections.abc import Callable
 
-from . import config, keystore, mcpclient, recent, requestlog
+from . import config, holder, keystore, mcpclient, recent, requestlog
 
 ERR = "ERR "
 #: How long a spoken reply waits for an early refusal before handing off.
@@ -39,7 +39,7 @@ READ_SECONDS = 25.0
 CALL_TIMEOUT = 60.0
 AS_IS = {"", "as is", "asis"}
 
-#: What the SDK answers when a paid call's dpop_token is missing, unknown or expired.
+#: What the SDK answers when the connection does not (or no longer) prove the npub.
 PROOF_CODES = frozenset({"proof_missing", "proof_required", "proof_refresh_needed", "proof_invalid"})
 EXPIRED = ERR + "Your ChartRemotely sign-in expired. Answer the DM on your phone to renew."
 REASON = "Your Mac's ChartRemotely voice control needs you to sign in again."
@@ -88,10 +88,15 @@ def refusal(payload: dict) -> str | None:
 
 # -- the call -----------------------------------------------------------------------
 
-def _call(base: str, tool: str, args: dict) -> dict:
-    """One tool call. Never raises: an unreachable operator is an ``error`` payload."""
+def _call(base: str, npub: str, tool: str, args: dict) -> dict:
+    """One tool call over this Mac's connection for ``npub``. Never raises: an
+    unreachable operator is an ``error`` payload."""
     try:
-        return mcpclient.Client(base, timeout=CALL_TIMEOUT).call(tool, args)
+        return mcpclient.Client(base, timeout=CALL_TIMEOUT, bearer=holder.bearer(base, npub)).call(tool, args)
+    except holder.HolderError as exc:
+        return {"success": False, "error": str(exc)}
+    except keystore.KeystoreError:
+        return {"success": False, "error": "The Keychain would not give me your ChartRemotely sign-in."}
     except mcpclient.McpError as exc:
         return {"success": False, "error": str(exc)}
     except Exception as exc:  # noqa: BLE001 - a background call must never kill the listener
@@ -117,21 +122,12 @@ def send(command: str, where: str, cfg: dict | None = None) -> str:
     if isinstance(mapped, str):
         return mapped
     tool, args = mapped
-    try:
-        token = keystore.load_token(npub)
-    except keystore.KeystoreError as exc:
-        requestlog.outcome("serve", tool, wanted, str(exc))
-        return ERR + "The Keychain would not give me your ChartRemotely sign-in."
-    if not token:
-        renew(base, npub)
-        return EXPIRED
-
-    envelope = {**args, "display": wanted or agent_id, "npub": npub, "dpop_token": token}
+    envelope = {**args, "display": wanted or agent_id, "npub": npub}
     box: dict = {}
     done = threading.Event()
 
     def work() -> None:
-        payload = _call(base, tool, envelope)
+        payload = _call(base, npub, tool, envelope)
         box["payload"] = payload
         settle(base, npub, tool, wanted, payload)
         if tool == "chart_show_chart" and refusal(payload) is None \
@@ -154,7 +150,7 @@ def send(command: str, where: str, cfg: dict | None = None) -> str:
 
 
 def settle(base: str, npub: str, tool: str, where: str, payload: dict) -> None:
-    """Log how a call ended (no token, no arguments) and renew an expired sign-in."""
+    """Log how a call ended (no arguments) and renew an expired sign-in."""
     if payload.get("error_code") in PROOF_CODES:
         renew(base, npub)
     requestlog.outcome("serve", tool, where, refusal(payload))
@@ -175,16 +171,16 @@ def renew(base: str, npub: str, sleep: Callable[[float], None] = time.sleep) -> 
 
 def _renew(base: str, npub: str, sleep: Callable[[float], None]) -> None:
     try:
-        sent = _call(base, "chart_request_npub_proof", {"patron_npub": npub, "reason": REASON})
+        sent = _call(base, npub, "chart_request_npub_proof", {"patron_npub": npub, "reason": REASON})
         phrase = sent.get("dpop_token")
         if not phrase:
             requestlog.outcome("serve", "renew", "", refusal(sent) or "no proof request was sent")
             return
         for delay in RENEW_DELAYS:
             sleep(delay)
-            got = _call(base, "chart_receive_npub_proof", {"patron_npub": npub, "dpop_token": phrase})
+            got = _call(base, npub, "chart_receive_npub_proof", {"patron_npub": npub, "dpop_token": phrase})
             if got.get("success") is not False and not got.get("error"):
-                keystore.save_token(npub, str(got.get("dpop_token") or phrase))
+                # Proven into this Mac's connection; nothing to keep here.
                 requestlog.outcome("serve", "renew", "", None)
                 return
             if got.get("error_code") not in (NOT_YET, None):

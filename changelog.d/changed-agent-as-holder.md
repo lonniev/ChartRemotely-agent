@@ -1,0 +1,1 @@
+- The agent connects to the operator as a *holder* (OAuth run headless, tokens in the login Keychain as the voice sign-in): the owner's npub is proven into that connection by the usual DM, and voice and display calls carry only the npub. Pairing with a key on this Mac signs the request with it (NIP-98). The first voice command after upgrading asks for one fresh DM approval.

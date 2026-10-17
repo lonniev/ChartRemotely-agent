@@ -14,11 +14,11 @@ import urllib.request
 
 import pytest
 
-from chartremotely import config, keystore, mcpclient, patron
+from chartremotely import config, holder, mcpclient, patron
 from chartremotely.answer import Answer
 
 NPUB = "npub1" + "p" * 58
-TOKEN = "seven-amber-door"
+BEARER = "dpyc_ha_this-macs-connection"
 
 
 class FakeOperator:
@@ -33,14 +33,16 @@ class FakeOperator:
         self.gate = threading.Event()
         self.gate.set()
         self.lock = threading.Lock()
+        self.bearers = []
 
-    def client(self, base, timeout=60.0):
+    def client(self, base, timeout=60.0, bearer="", signer=None):
         operator = self
 
         class Client:
             def call(self, tool, args):
                 with operator.lock:
                     operator.calls.append((tool, dict(args)))
+                    operator.bearers.append(bearer)
                 if tool not in ("chart_request_npub_proof", "chart_receive_npub_proof"):
                     operator.gate.wait(10)
                 answer = operator.answers[tool]
@@ -62,11 +64,8 @@ def operator(monkeypatch, tmp_path):
     config.update(operator_url="https://op.test", agent_id="a1", agent_secret="s1", owner_npub=NPUB)
     fake = FakeOperator()
     monkeypatch.setattr(mcpclient, "Client", fake.client)
-    vault = {NPUB: TOKEN}
-    monkeypatch.setattr(keystore, "load_token", lambda npub: vault.get(npub))
-    monkeypatch.setattr(keystore, "save_token", lambda npub, token: vault.__setitem__(npub, token))
+    monkeypatch.setattr(holder, "bearer", lambda base, npub: BEARER)
     monkeypatch.setattr(patron, "RENEW_DELAYS", (0.0,) * 5)
-    fake.vault = vault
     yield fake
     fake.gate.set()
     _wait_for_renewal()
@@ -84,7 +83,9 @@ def test_a_set_calls_chart_show_chart_as_the_owner_with_this_macs_id_when_where_
     said = patron.send("set PLTR | half", "")
     assert said == "Chart PLTR at half scale sent to this Mac. Good luck."
     assert operator.calls == [("chart_show_chart", {
-        "security": "PLTR", "scale": "half", "display": "a1", "npub": NPUB, "dpop_token": TOKEN})]
+        "security": "PLTR", "scale": "half", "display": "a1", "npub": NPUB})]
+    # The connection proves the npub; no proof rides in the arguments.
+    assert operator.bearers == [BEARER]
 
 
 def test_a_named_display_goes_as_said_and_the_hand_off_names_it(operator):
@@ -175,25 +176,26 @@ def test_an_expired_sign_in_is_spoken_and_renewed_once(operator, monkeypatch):
     assert operator.tools().count("chart_receive_npub_proof") == 3
     request = next(a for t, a in operator.calls if t == "chart_request_npub_proof")
     assert request["patron_npub"] == NPUB and "nsec" not in json.dumps(request).lower()
-    assert operator.vault[NPUB] == "fresh-code"
+    # The renewal proves the npub into the same connection.
+    assert set(operator.bearers) == {BEARER}
 
 
-def test_no_sign_in_yet_starts_the_dm_without_calling_the_paid_tool(operator):
-    operator.vault.clear()
-    assert patron.send("set PLTR | half", "") == patron.EXPIRED
-    _wait_for_renewal()
-    assert "chart_show_chart" not in operator.tools()
-    assert operator.vault[NPUB] == "fresh-code"
+def test_a_mac_the_operator_will_not_connect_says_why(operator, monkeypatch):
+    def refused(base, npub):
+        raise holder.HolderError("the operator refused (503)")
+
+    monkeypatch.setattr(holder, "bearer", refused)
+    assert patron.send("read", "") == patron.ERR + "the operator refused (503)"
+    assert operator.tools() == []
 
 
 def test_a_renewal_that_is_refused_stops_rather_than_polling_on(operator):
-    operator.vault.clear()
+    operator.answers["chart_show_chart"] = {"success": False, "error_code": "proof_required", "error": "no"}
     operator.answers["chart_receive_npub_proof"] = [{"success": False, "error_code": "courier_expired",
                                                      "error": "that request expired"}]
     patron.send("set PLTR | half", "")
     _wait_for_renewal()
     assert operator.tools().count("chart_receive_npub_proof") == 1
-    assert NPUB not in operator.vault
 
 
 def test_the_sign_in_is_never_logged_or_written_to_the_config(operator, capsys, monkeypatch):
@@ -204,9 +206,9 @@ def test_the_sign_in_is_never_logged_or_written_to_the_config(operator, capsys, 
     _wait_for_renewal()
     time.sleep(0.1)
     logged = capsys.readouterr().err
-    assert TOKEN not in logged and "fresh-code" not in logged and "PLTR" not in logged
+    assert BEARER not in logged and "fresh-code" not in logged and "PLTR" not in logged
     stored = config.CONFIG_PATH.read_text()
-    assert TOKEN not in stored and "fresh-code" not in stored
+    assert BEARER not in stored and "fresh-code" not in stored
     assert json.loads(stored)["owner_npub"] == NPUB
 
 

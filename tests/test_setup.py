@@ -13,7 +13,7 @@ import types
 
 import pytest
 
-from chartremotely import config, keystore, mcpclient, relay, services, setup, shortcut
+from chartremotely import config, holder, keystore, mcpclient, relay, services, setup, shortcut
 
 NSEC = "nsec1" + "q" * 58
 NPUB = "npub1" + "p" * 58
@@ -202,8 +202,8 @@ def test_an_existing_npub_is_proven_by_dm_and_no_key_is_asked_for():
     client = StubClient({"chart_request_npub_proof": {"dpop_token": "seven-amber-door"},
                          "chart_receive_npub_proof": {"success": True, "dpop_token": "seven-amber-door"}})
     asked, said = [], []
-    token = setup.prove_by_dm(client, NPUB, lambda q: asked.append(q) or "", said.append)
-    assert token == "seven-amber-door"
+    # Proven into the connection `client` carries: nothing comes back to keep.
+    assert setup.prove_by_dm(client, NPUB, lambda q: asked.append(q) or "", said.append) is None
     assert [t for t, _ in client.calls] == ["chart_request_npub_proof", "chart_receive_npub_proof"]
     assert any("seven-amber-door" in s for s in said), "the human sees the code to compare"
     assert any("cache_duration" in s and "unlimited" in s for s in said), "a longer sign-in is offered"
@@ -224,9 +224,9 @@ def test_setup_adopts_its_own_pairing_code(monkeypatch):
     collected = []
     monkeypatch.setattr(relay, "collect", lambda base, code, exp: collected.append(code) or {"agent_id": "a1"})
     client = StubClient({"chart_pair_agent": {"ok": True, "display": "Desk", "agent_id": "a1"}})
-    setup.pair(client, "https://op.test", NPUB, "PROOF", "Desk")
-    assert client.calls == [("chart_pair_agent", {"code": "ABC234", "label": "Desk", "npub": NPUB,
-                                                  "dpop_token": "PROOF"})]
+    setup.pair(client, "https://op.test", NPUB, "Desk")
+    # The client proves the npub on its connection; no proof rides in the arguments.
+    assert client.calls == [("chart_pair_agent", {"code": "ABC234", "label": "Desk", "npub": NPUB})]
     assert collected == ["ABC234"]
 
 
@@ -234,7 +234,7 @@ def test_a_refused_pairing_says_why(monkeypatch):
     monkeypatch.setattr(relay, "open_code", lambda base: ("ABC234", 900.0))
     client = StubClient({"chart_pair_agent": {"success": False, "error": "prove it"}})
     with pytest.raises(setup.SetupError, match="prove it"):
-        setup.pair(client, "https://op.test", NPUB, "PROOF", "Desk")
+        setup.pair(client, "https://op.test", NPUB, "Desk")
 
 
 # -- the whole run never keeps the key -------------------------------------------
@@ -243,13 +243,15 @@ def test_a_made_key_never_reaches_the_agents_config(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "CONFIG_DIR", tmp_path)
     monkeypatch.setattr(config, "CONFIG_PATH", tmp_path / "config.json")
     monkeypatch.setattr(setup, "new_key", lambda: (NPUB, NSEC))
-    monkeypatch.setattr(setup, "sign_once", lambda nsec, tool: f"proof-for-{tool}")
+    signers = []
+    monkeypatch.setattr(setup, "signer_for", lambda nsec: signers.append(nsec) or "signs-with-the-key")
     kept = []
     monkeypatch.setattr(setup, "keep_for_human", lambda npub, nsec, ask, say: kept.append(npub))
     monkeypatch.setattr(relay, "open_code", lambda base: ("ABC234", 900.0))
     monkeypatch.setattr(relay, "collect", lambda base, code, exp: config.update(
         operator_url=base, agent_id="a1", agent_secret="agent-secret"))
-    monkeypatch.setattr(mcpclient, "Client", lambda base: StubClient(
+    clients = []
+    monkeypatch.setattr(mcpclient, "Client", lambda base, **kw: clients.append(kw) or StubClient(
         {"chart_pair_agent": {"ok": True, "display": "Desk", "agent_id": "a1"}}))
 
     from chartremotely import tailnet
@@ -269,7 +271,8 @@ def test_a_made_key_never_reaches_the_agents_config(monkeypatch, tmp_path):
     assert setup.run(ask=lambda q: next(answers), say=said.append) == 0
 
     stored = (tmp_path / "config.json").read_text()
-    assert NSEC not in stored and "proof-for" not in stored
+    assert NSEC not in stored and "signs-with-the-key" not in stored
+    assert signers == [NSEC] and clients[0] == {"signer": "signs-with-the-key"}, "pairing is signed with the key"
     assert json.loads(stored)["agent_id"] == "a1"
     assert kept == [NPUB], "the made key is handed to the human's Keychain"
     assert built == ["https://mac.example.ts.net/chart"]
@@ -289,7 +292,7 @@ def _stand_in_the_mac(monkeypatch, tmp_path, answers):
     monkeypatch.setattr(relay, "open_code", lambda base: ("ABC234", 900.0))
     monkeypatch.setattr(relay, "collect", lambda base, code, exp: config.update(
         operator_url=base, agent_id="a1", agent_secret="agent-secret"))
-    monkeypatch.setattr(mcpclient, "Client", lambda base: StubClient(answers))
+    monkeypatch.setattr(mcpclient, "Client", lambda base, **kw: StubClient(answers))
     from chartremotely import tailnet
     monkeypatch.setattr(tailnet, "status", lambda: {"Self": {"DNSName": "mac.example.ts.net."}})
     monkeypatch.setattr(tailnet, "serve", lambda port: None)
@@ -301,7 +304,12 @@ def _stand_in_the_mac(monkeypatch, tmp_path, answers):
     monkeypatch.setattr(setup.subprocess, "run", lambda *a, **k: None)
     _no_hearing(monkeypatch)
     vault = {}
-    monkeypatch.setattr(keystore, "save_token", lambda npub, token: vault.__setitem__(npub, token))
+
+    def connect(base, npub):  # this Mac's holder connection, kept in the Keychain
+        vault[npub] = '{"refresh_token": "r"}'
+        return "dpyc_ha_conn"
+
+    monkeypatch.setattr(holder, "bearer", connect)
     monkeypatch.setattr(keystore, "load_token", lambda npub: vault.get(npub))
     return vault
 
@@ -314,9 +322,9 @@ def test_a_dm_proven_owner_keeps_the_sign_in_in_the_keychain_not_the_config(monk
     answers = iter(["", "1", NPUB, "", "Desk"])
     said = []
     assert setup.run(ask=lambda q: next(answers), say=said.append) == 0
-    assert vault == {NPUB: "seven-amber-door"}
+    assert set(vault) == {NPUB}, "the connection that holds the npub is kept in the Keychain"
     stored = (tmp_path / "config.json").read_text()
-    assert "seven-amber-door" not in stored
+    assert "refresh_token" not in stored and "dpyc_ha_conn" not in stored
     assert json.loads(stored)["owner_npub"] == NPUB
 
 
@@ -327,8 +335,8 @@ def test_an_already_paired_mac_is_signed_in_for_voice_by_dm(monkeypatch, tmp_pat
     config.update(operator_url="https://op.test", agent_id="a1", agent_secret="agent-secret")
     answers = iter(["", NPUB, "y", ""])
     assert setup.run(ask=lambda q: next(answers), say=lambda s: None) == 0
-    assert vault == {NPUB: "seven-amber-door"}
-    assert "seven-amber-door" not in (tmp_path / "config.json").read_text()
+    assert set(vault) == {NPUB}
+    assert "refresh_token" not in (tmp_path / "config.json").read_text()
 
 
 def test_setup_removes_a_retired_ask_shortcut_and_names_any_it_could_not(monkeypatch, tmp_path):

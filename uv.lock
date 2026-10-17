@@ -279,7 +279,7 @@ requires-dist = [
     { name = "pyobjc-framework-security", marker = "extra == 'macos'", specifier = ">=10" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
-    { name = "tollbooth-dpyc", extras = ["nostr"], marker = "extra == 'setup'", specifier = "==0.90.0" },
+    { name = "tollbooth-dpyc", extras = ["nostr"], marker = "extra == 'setup'", specifier = "==0.102.1" },
 ]
 provides-extras = ["macos", "setup", "dev"]
 
@@ -1032,16 +1032,16 @@ sdist = { url = "https://files.pythonhosted.org/packages/bb/89/6df40b0c5fd9a1c30
 
 [[package]]
 name = "tollbooth-dpyc"
-version = "0.90.0"
+version = "0.102.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cryptography" },
     { name = "httpx" },
     { name = "pynostr" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/9c/c6/6d372c69fb5d5dca5517b123ddb649be9b3998dc6545c64716fc7cb9ec1f/tollbooth_dpyc-0.90.0.tar.gz", hash = "sha256:98eda35565893c735854ade7300fe48ce81c1e937a2a9a6120bc15986c7bdcaf", size = 2775909, upload-time = "2026-09-07T21:47:10.058Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d9/2f/cb915e6990b3265aadf6c28c191a51fca20f5173a2d44195e6c62e6171a6/tollbooth_dpyc-0.102.1.tar.gz", hash = "sha256:418db48701a3aeccea88c3c5a575f57019e8ab83b74562430902c573b65e3bdb", size = 2847548, upload-time = "2026-10-17T22:59:10.316Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/68/ab/cc684c1dc3b7cf0f8b02d80c3a74c40cca8f0836914a9cbebfa4bf820443/tollbooth_dpyc-0.90.0-py3-none-any.whl", hash = "sha256:1322b60e6fe845f0089c86afa1b2639a4ae108e714639ceeaed4a9c9046c6246", size = 448469, upload-time = "2026-09-07T21:47:08.093Z" },
+    { url = "https://files.pythonhosted.org/packages/47/91/1369f087470e09147563d48d0044e8995276a42f903c1bab133c9e4ec719/tollbooth_dpyc-0.102.1-py3-none-any.whl", hash = "sha256:3d9ce4916b6063415a83411fa4ef8b8231e65682fe96c7772a8bbd671ba78e7c", size = 484434, upload-time = "2026-10-17T22:59:08.177Z" },
 ]
 
 [package.optional-dependencies]
