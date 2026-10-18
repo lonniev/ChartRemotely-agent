@@ -1,0 +1,1 @@
+- The npub-proof DM's phrase is now called `nonce`, matching ChartRemotely on SDK 0.103.

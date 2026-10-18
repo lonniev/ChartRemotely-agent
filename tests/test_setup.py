@@ -199,8 +199,8 @@ class StubClient:
 
 
 def test_an_existing_npub_is_proven_by_dm_and_no_key_is_asked_for():
-    client = StubClient({"chart_request_npub_proof": {"dpop_token": "seven-amber-door"},
-                         "chart_receive_npub_proof": {"success": True, "dpop_token": "seven-amber-door"}})
+    client = StubClient({"chart_request_npub_proof": {"nonce": "seven-amber-door"},
+                         "chart_receive_npub_proof": {"success": True, "nonce": "seven-amber-door"}})
     asked, said = [], []
     # Proven into the connection `client` carries: nothing comes back to keep.
     assert setup.prove_by_dm(client, NPUB, lambda q: asked.append(q) or "", said.append) is None
@@ -211,7 +211,7 @@ def test_an_existing_npub_is_proven_by_dm_and_no_key_is_asked_for():
 
 
 def test_a_dm_that_was_not_answered_stops_setup():
-    client = StubClient({"chart_request_npub_proof": {"dpop_token": "x"},
+    client = StubClient({"chart_request_npub_proof": {"nonce": "x"},
                          "chart_receive_npub_proof": {"error": "no reply yet"}})
     with pytest.raises(setup.SetupError, match="no reply yet"):
         setup.prove_by_dm(client, NPUB, lambda q: "", lambda s: None)
@@ -316,8 +316,8 @@ def _stand_in_the_mac(monkeypatch, tmp_path, answers):
 
 def test_a_dm_proven_owner_keeps_the_sign_in_in_the_keychain_not_the_config(monkeypatch, tmp_path):
     vault = _stand_in_the_mac(monkeypatch, tmp_path, {
-        "chart_request_npub_proof": {"dpop_token": "seven-amber-door"},
-        "chart_receive_npub_proof": {"success": True, "dpop_token": "seven-amber-door"},
+        "chart_request_npub_proof": {"nonce": "seven-amber-door"},
+        "chart_receive_npub_proof": {"success": True, "nonce": "seven-amber-door"},
         "chart_pair_agent": {"ok": True, "display": "Desk", "agent_id": "a1"}})
     answers = iter(["", "1", NPUB, "", "Desk"])
     said = []
@@ -330,8 +330,8 @@ def test_a_dm_proven_owner_keeps_the_sign_in_in_the_keychain_not_the_config(monk
 
 def test_an_already_paired_mac_is_signed_in_for_voice_by_dm(monkeypatch, tmp_path):
     vault = _stand_in_the_mac(monkeypatch, tmp_path, {
-        "chart_request_npub_proof": {"dpop_token": "seven-amber-door"},
-        "chart_receive_npub_proof": {"success": True, "dpop_token": "seven-amber-door"}})
+        "chart_request_npub_proof": {"nonce": "seven-amber-door"},
+        "chart_receive_npub_proof": {"success": True, "nonce": "seven-amber-door"}})
     config.update(operator_url="https://op.test", agent_id="a1", agent_secret="agent-secret")
     answers = iter(["", NPUB, "y", ""])
     assert setup.run(ask=lambda q: next(answers), say=lambda s: None) == 0
@@ -341,8 +341,8 @@ def test_an_already_paired_mac_is_signed_in_for_voice_by_dm(monkeypatch, tmp_pat
 
 def test_setup_removes_a_retired_ask_shortcut_and_names_any_it_could_not(monkeypatch, tmp_path):
     _stand_in_the_mac(monkeypatch, tmp_path, {
-        "chart_request_npub_proof": {"dpop_token": "seven-amber-door"},
-        "chart_receive_npub_proof": {"success": True, "dpop_token": "seven-amber-door"}})
+        "chart_request_npub_proof": {"nonce": "seven-amber-door"},
+        "chart_receive_npub_proof": {"success": True, "nonce": "seven-amber-door"}})
     config.update(operator_url="https://op.test", agent_id="a1", agent_secret="agent-secret")
     monkeypatch.setattr(shortcut, "remove_retired", lambda: (["ChartRemotely Ask"], ["ChartRemotely Ask 2"]))
     answers = iter(["", NPUB, "y", ""])

@@ -1,8 +1,8 @@
 """Keep a patron's secrets in their login Keychain, never in this agent's files.
 
 Two kinds, never mixed: the Nostr key ``setup`` may make for the human, and
-the voice sign-in - the ``dpop_token`` the operator returns once the owner
-has proven their npub by DM - which the listener passes on each priced call.
+the voice sign-in - this Mac's OAuth tokens on the operator, whose connection
+holds the owner's npub once they have proven it by DM.
 
 A key made by ``setup`` belongs to the human. It goes into their login
 Keychain as an internet password for the ChartRemotely site, and it is
