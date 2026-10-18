@@ -10,9 +10,10 @@ what is already done, so running setup again is always safe:
    A made key is kept for the human - their Keychain, then Safari's saved
    passwords - and used once, in memory, to sign the pairing. It is never
    written to this agent's config. Then **pairing**, without a code to copy: setup adopts this machine's code itself.
-   and **voice sign-in**: the ``dpop_token`` from the owner's DM proof, kept in
-   the login Keychain (their npub goes in the config), so the listener can
-   call the operator's priced tools as that patron.
+   and **voice sign-in**: this Mac's connection to the operator, into which the
+   owner's DM proof puts their npub; its OAuth tokens are kept in the login
+   Keychain (their npub goes in the config), so the listener can call the
+   operator's priced tools as that patron.
 2. **Tailscale**: the Mac's tailnet address, with ``/chart`` forwarded to the agent.
 3. **Services**: the listener and the relay, under launchd.
 4. **Permissions**: Accessibility and Screen Recording, asked for by the
@@ -61,7 +62,7 @@ def prove_by_dm(client: mcpclient.Client, npub: str, ask: Ask, say: Say) -> None
     sent = client.call("chart_request_npub_proof", {
         "patron_npub": npub, "verify_at": SITE,
         "reason": "You asked to pair a Mac with ChartRemotely."})
-    phrase = sent.get("dpop_token")
+    phrase = sent.get("nonce")
     if not phrase:
         raise SetupError(sent.get("error") or "the operator did not send a proof request")
     say(f"A Nostr DM is on its way to {npub[:12]}…")
@@ -70,7 +71,7 @@ def prove_by_dm(client: mcpclient.Client, npub: str, ask: Ask, say: Say) -> None
     say("may set cache_duration (30 days, or unlimited) so voice keeps working that")
     say("long; left alone, the sign-in lasts 2 hours.")
     ask("Press Return once you have replied… ")
-    got = client.call("chart_receive_npub_proof", {"patron_npub": npub, "dpop_token": phrase})
+    got = client.call("chart_receive_npub_proof", {"patron_npub": npub, "nonce": phrase})
     if got.get("error"):
         raise SetupError(got["error"])
 

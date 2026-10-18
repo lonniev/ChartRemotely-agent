@@ -172,13 +172,13 @@ def renew(base: str, npub: str, sleep: Callable[[float], None] = time.sleep) -> 
 def _renew(base: str, npub: str, sleep: Callable[[float], None]) -> None:
     try:
         sent = _call(base, npub, "chart_request_npub_proof", {"patron_npub": npub, "reason": REASON})
-        phrase = sent.get("dpop_token")
+        phrase = sent.get("nonce")
         if not phrase:
             requestlog.outcome("serve", "renew", "", refusal(sent) or "no proof request was sent")
             return
         for delay in RENEW_DELAYS:
             sleep(delay)
-            got = _call(base, npub, "chart_receive_npub_proof", {"patron_npub": npub, "dpop_token": phrase})
+            got = _call(base, npub, "chart_receive_npub_proof", {"patron_npub": npub, "nonce": phrase})
             if got.get("success") is not False and not got.get("error"):
                 # Proven into this Mac's connection; nothing to keep here.
                 requestlog.outcome("serve", "renew", "", None)

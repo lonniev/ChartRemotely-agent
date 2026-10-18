@@ -28,8 +28,8 @@ class FakeOperator:
         self.calls = []
         self.answers = {"chart_show_chart": {"ok": True, "display": "Desk", "result": "Showing PLTR"},
                         "chart_read_chart": {"ok": True, "display": "Desk", "result": "PLTR at daily"},
-                        "chart_request_npub_proof": {"success": True, "dpop_token": "fresh-code"},
-                        "chart_receive_npub_proof": [{"success": True, "dpop_token": "fresh-code"}]}
+                        "chart_request_npub_proof": {"success": True, "nonce": "fresh-code"},
+                        "chart_receive_npub_proof": [{"success": True, "nonce": "fresh-code"}]}
         self.gate = threading.Event()
         self.gate.set()
         self.lock = threading.Lock()
@@ -168,7 +168,7 @@ def test_an_expired_sign_in_is_spoken_and_renewed_once(operator, monkeypatch):
     operator.answers["chart_receive_npub_proof"] = [
         {"success": False, "error_code": "courier_not_found", "error": "No reply found"},
         {"success": False, "error_code": "courier_not_found", "error": "No reply found"},
-        {"success": True, "dpop_token": "fresh-code"}]
+        {"success": True, "nonce": "fresh-code"}]
     assert patron.send("set PLTR | half", "") == patron.EXPIRED
     assert patron.send("set PLTR | half", "") == patron.EXPIRED
     _wait_for_renewal()
