@@ -25,7 +25,7 @@ macos = [
 ]
 # `chartremotely setup` makes and proves Nostr identities. The key and proof
 # code is the tollbooth-dpyc SDK's own, never rewritten here.
-setup = ["tollbooth-dpyc[nostr]==0.105.0"]
+setup = ["tollbooth-dpyc[nostr]==0.105.1"]
 dev = ["pytest>=8", "ruff>=0.6"]
 
 [project.urls]
