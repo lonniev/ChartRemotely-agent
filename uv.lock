@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12"
 
 [[package]]
@@ -279,7 +279,7 @@ requires-dist = [
     { name = "pyobjc-framework-security", marker = "extra == 'macos'", specifier = ">=10" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
-    { name = "tollbooth-dpyc", extras = ["nostr"], marker = "extra == 'setup'", specifier = "==0.102.1" },
+    { name = "tollbooth-dpyc", extras = ["nostr"], marker = "extra == 'setup'", specifier = "==0.105.0" },
 ]
 provides-extras = ["macos", "setup", "dev"]
 
@@ -462,10 +462,10 @@ name = "httpx2"
 version = "2.13.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "anyio", marker = "sys_platform != 'emscripten'" },
-    { name = "httpcore2", marker = "sys_platform != 'emscripten'" },
+    { name = "anyio" },
+    { name = "httpcore2" },
     { name = "idna" },
-    { name = "truststore", marker = "sys_platform != 'emscripten'" },
+    { name = "truststore" },
     { name = "typing-extensions", marker = "python_full_version < '3.13'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/d5/44/474bef2a0e9d90f1715d32cb98b0738695ca17ba324095fb2497ed7fbd59/httpx2-2.13.1.tar.gz", hash = "sha256:e48744a19e3af5ee48313d0ce5fe941d5422fae5705ea922a4aabf94d7800dfa", size = 100405, upload-time = "2026-09-23T07:47:23.052Z" }
@@ -481,7 +481,7 @@ dependencies = [
     { name = "click" },
     { name = "filelock" },
     { name = "fsspec" },
-    { name = "hf-xet", marker = "platform_machine == 'AMD64' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'arm64' or platform_machine == 'x86_64'" },
+    { name = "hf-xet" },
     { name = "httpx2" },
     { name = "packaging" },
     { name = "pyyaml" },
@@ -574,7 +574,7 @@ name = "mlx"
 version = "0.32.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "mlx-metal", marker = "sys_platform == 'darwin'" },
+    { name = "mlx-metal" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/38/f7/5664e13821491559c953494e6705c818203d6880d713a0c22e12bead9564/mlx-0.32.2-cp312-cp312-macosx_14_0_arm64.whl", hash = "sha256:77217798a2b036bae9f213b851d4cde4581893787c9964458b7d471f86036bd6", size = 619370, upload-time = "2026-08-25T10:31:44.235Z" },
@@ -1032,16 +1032,16 @@ sdist = { url = "https://files.pythonhosted.org/packages/bb/89/6df40b0c5fd9a1c30
 
 [[package]]
 name = "tollbooth-dpyc"
-version = "0.102.1"
+version = "0.105.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cryptography" },
     { name = "httpx" },
     { name = "pynostr" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d9/2f/cb915e6990b3265aadf6c28c191a51fca20f5173a2d44195e6c62e6171a6/tollbooth_dpyc-0.102.1.tar.gz", hash = "sha256:418db48701a3aeccea88c3c5a575f57019e8ab83b74562430902c573b65e3bdb", size = 2847548, upload-time = "2026-10-17T22:59:10.316Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e5/d2/f6b127cc57180916314ee4ef57717a2748340597944d8276d83c8b1afafb/tollbooth_dpyc-0.105.0.tar.gz", hash = "sha256:27e1895557169cfc19aa8ba30d0ce2ea6fc3ed4ffdc5d0aa5a432ed6660ce08c", size = 2899935, upload-time = "2026-10-21T10:23:55.85Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/47/91/1369f087470e09147563d48d0044e8995276a42f903c1bab133c9e4ec719/tollbooth_dpyc-0.102.1-py3-none-any.whl", hash = "sha256:3d9ce4916b6063415a83411fa4ef8b8231e65682fe96c7772a8bbd671ba78e7c", size = 484434, upload-time = "2026-10-17T22:59:08.177Z" },
+    { url = "https://files.pythonhosted.org/packages/e4/20/a98f685de17c62475a372c6b772a3d2efb63294f9a31cc0300546f16b00b/tollbooth_dpyc-0.105.0-py3-none-any.whl", hash = "sha256:3e70b5c0bccb2df261c9f384b7366a1b92b334632352d0459d20c440fa6329a3", size = 479299, upload-time = "2026-10-21T10:23:53.738Z" },
 ]
 
 [package.optional-dependencies]
@@ -1091,7 +1091,7 @@ name = "tqdm"
 version = "4.70.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "colorama", marker = "python_version < '0'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/0d/ea/b2a5bd54b28a324dae8211928b2d730b6547500342c7e6c6dea08bd0a485/tqdm-4.70.1.tar.gz", hash = "sha256:cefd0eca11b2a37a3aee776544d4f4ae913f02688135b5556b8788dfa474afc4", size = 171846, upload-time = "2026-09-11T07:25:16.601Z" }
 wheels = [
