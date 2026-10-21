@@ -14,9 +14,7 @@ import time
 import Quartz
 
 from . import ax, config, layout, popups
-
-# Accepts tickers, futures (/ES), indices (.SPX) and share classes (BRK/B).
-TICKER = re.compile(r"^[./$]?[A-Z]{1,6}([/.][A-Z]{1,2})?(:[A-Z]+)?$")
+from .resolve import TICKER
 
 #: Longest show() waits for the chart's title to name the new symbol.
 COMMIT_WAIT = 3.0

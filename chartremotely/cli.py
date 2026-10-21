@@ -128,7 +128,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _looks_like_ticker(text: str) -> bool:
-    from .symbol import TICKER
+    from .resolve import TICKER
     return bool(TICKER.match(text.strip().upper()))
 
 

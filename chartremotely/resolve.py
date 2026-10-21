@@ -30,7 +30,13 @@ import difflib
 import re
 from dataclasses import dataclass, field
 
-__all__ = ["Decision", "candidates", "decide", "normalize", "phonetic", "resolve", "spelled"]
+__all__ = ["TICKER", "Decision", "candidates", "decide", "normalize", "phonetic", "resolve", "spelled"]
+
+# A stock (PLTR), share class (BRK/B), crypto pair (BTC/USD), index ($SPX)
+# or dated future (/ESZ25:XCME). thinkorswim's symbol field must hold one
+# of these before the agent types into it, so a shape left out here refuses
+# every request that follows it.
+TICKER = re.compile(r"^[./$]?[A-Z][A-Z0-9]{0,5}([/.][A-Z]{1,4})?(:[A-Z]+)?$")
 
 # Corporate furniture, stripped from both sides before comparison. "and"
 # is here because "&" normalises to it, so DEERE & CO reduces to "deere".

@@ -1,0 +1,1 @@
+- Say an ETF: "XBI", "X L E" or "QQQ" now charts the fund. The registry adds every listed ETF from Nasdaq Trader's symbol directory, refreshed weekly, to the SEC issuer list, which omits funds that file as a series of a parent trust. Companies still resolve first.
