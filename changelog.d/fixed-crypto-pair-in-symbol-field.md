@@ -1,0 +1,1 @@
+- A chart showing a crypto pair (`BTC/USD`) or a dated future (`/ESZ25:XCME`) no longer makes the agent refuse every later request with "symbol field did not validate": those values now count as ticker-shaped.

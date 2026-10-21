@@ -2,7 +2,7 @@
 
 Siri's dictation (and, next, a Whisper transcription of the whole
 utterance) matches against all of English. What we need back is small: a
-company from the SEC list, one of ten time frames, and the name of a
+company or ETF from the registry, one of ten time frames, and the name of a
 display. This module takes the text as heard - "Palantir half on mac mini",
 "shop thirty minutes", "GE daily on the studio", "apple as is on desk" - and
 recovers those three, refusing rather than guessing.
@@ -22,7 +22,7 @@ It works right to left, the way people say it:
    symbols charted lately as a prior. Too close to call is an answer too:
    the options, so the reply can ask.
 
-Pure and deterministic: no LLM, no network beyond the cached SEC registry.
+Pure and deterministic: no LLM, no network beyond the cached security registry.
 """
 
 from __future__ import annotations
@@ -183,7 +183,7 @@ def understand(text: str, *, recent: list[str], displays: list[str],
 
     ``recent``: symbols charted lately, most recent first (:mod:`recent`).
     ``displays``: the owner's display names, to split off "where". ``rows``:
-    the SEC registry, loaded from its cache when not given.
+    the security registry, loaded from its cache when not given.
     """
     if rows is None:
         from . import registry
