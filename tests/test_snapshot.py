@@ -61,3 +61,23 @@ def test_a_point_outside_every_pane_is_refused():
 def test_the_crop_never_runs_past_the_image():
     x, y, w, h = snapshot.chart_crop((10, 10), [(-50, -50, 400, 400)], (0, 0, 1000, 1000), (1000, 1000))
     assert (x, y) == (0, 0) and w <= 1000 and h <= 1000
+
+
+def test_a_refused_capture_names_screen_recording_and_its_fix():
+    failed = snapshot.capture_failed("could not create image from window\n", allowed=False)
+    assert isinstance(failed, snapshot.CaptureFailed)
+    assert "Screen Recording" in str(failed) and "chartremotely setup" in str(failed)
+
+
+def test_an_allowed_capture_that_fails_reports_what_screencapture_said():
+    failed = snapshot.capture_failed("\n  could not create image from window\nmore\n", allowed=True)
+    assert str(failed) == "screencapture failed: could not create image from window"
+
+
+def test_a_silent_failure_still_says_something():
+    assert "said nothing" in str(snapshot.capture_failed("", allowed=True))
+
+
+def test_the_screen_recording_message_survives_the_reply_limit():
+    # vocab._short keeps 120 characters; the fix must not be cut off.
+    assert len(snapshot.SCREEN_RECORDING_OFF) <= 120

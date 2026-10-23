@@ -140,8 +140,10 @@ def capture(app=None) -> bytes:
 
     with tempfile.TemporaryDirectory() as tmp:
         shot = Path(tmp) / "window.png"
-        subprocess.run(["screencapture", "-x", "-o", "-l", str(target["kCGWindowNumber"]), str(shot)],
-                       check=True, capture_output=True)
+        ran = subprocess.run(["screencapture", "-x", "-o", "-l", str(target["kCGWindowNumber"]), str(shot)],
+                             check=False, capture_output=True, text=True)
+        if ran.returncode != 0 or not shot.exists():
+            raise snapshot.capture_failed(ran.stderr, bool(Quartz.CGPreflightScreenCaptureAccess()))
         crop = snapshot.chart_crop(hit, panes, bounds, _pixel_size(shot))
         chart = Path(tmp) / "chart.png"
         _crop(shot, chart, *crop)
