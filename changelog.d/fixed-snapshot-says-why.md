@@ -1,0 +1,1 @@
+- A snapshot that macOS refuses now says why: "Screen Recording is off for this agent's Python … Run: chartremotely setup" when the grant is missing (a Homebrew upgrade of that Python revokes it), otherwise what `screencapture` itself printed — no longer a cut-off command line.
