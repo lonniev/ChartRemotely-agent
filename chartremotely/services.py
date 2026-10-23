@@ -69,6 +69,31 @@ def loaded(label: str) -> bool:
                           capture_output=True, check=False).returncode == 0
 
 
+def pid_in(printed: str) -> int | None:
+    """The ``pid = N`` line of ``launchctl print``; None when the job is not running."""
+    for line in printed.splitlines():
+        key, _, value = line.strip().partition(" = ")
+        if key == "pid" and value.isdigit():
+            return int(value)
+    return None
+
+
+def running_python(command: str) -> str | None:
+    """The executable a running service was started from, or None if it is not running.
+
+    macOS grants Accessibility and Screen Recording to that exact file. A
+    Homebrew upgrade replaces it while the service keeps running the old,
+    deleted one - which then holds neither grant.
+    """
+    printed = subprocess.run(["launchctl", "print", f"{_domain()}/{LABELS[command]}"],
+                             capture_output=True, text=True, check=False)
+    pid = pid_in(printed.stdout) if printed.returncode == 0 else None
+    if pid is None:
+        return None
+    ps = subprocess.run(["ps", "-o", "comm=", "-p", str(pid)], capture_output=True, text=True, check=False)
+    return ps.stdout.strip() or None
+
+
 def install(command: str, settle: float = 10.0) -> Path:
     """Write and (re)start one service. Idempotent.
 

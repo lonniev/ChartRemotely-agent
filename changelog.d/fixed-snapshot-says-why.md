@@ -1,1 +1,3 @@
 - A snapshot that macOS refuses now says why: "Screen Recording is off for this agent's Python … Run: chartremotely setup" when the grant is missing (a Homebrew upgrade of that Python revokes it), otherwise what `screencapture` itself printed — no longer a cut-off command line.
+- `chartremotely doctor` checks Accessibility and Screen Recording as the services hold them (it asked the Terminal before, and never checked Screen Recording), and flags a service still running a Python that Homebrew upgraded away, with the restart command.
+- `chartremotely setup` shows the Python to allow in Finder, since the Settings list's + button will not select it, and restarts the services once the grants are on so they take effect.
