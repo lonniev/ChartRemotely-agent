@@ -38,6 +38,29 @@ class ChartNotIsolated(LookupError):
     """The chart's own pane could not be told apart from the whole window."""
 
 
+class CaptureFailed(RuntimeError):
+    """macOS would not photograph the window; the message says why."""
+
+
+#: The fix for a refused capture. The grant belongs to the exact Python the
+#: services run, so a Homebrew upgrade of that Python silently revokes it.
+SCREEN_RECORDING_OFF = ("Screen Recording is off for this agent's Python "
+                        "(a Python upgrade revokes it). Run: chartremotely setup")
+
+
+def capture_failed(stderr: str, allowed: bool) -> CaptureFailed:
+    """Name why ``screencapture`` failed, in words a reply can carry.
+
+    ``allowed`` is whether this process holds Screen Recording. Without it,
+    that is the cause whatever screencapture printed; with it, its own first
+    line is the best account there is.
+    """
+    if not allowed:
+        return CaptureFailed(SCREEN_RECORDING_OFF)
+    said = next((line.strip() for line in (stderr or "").splitlines() if line.strip()), "")
+    return CaptureFailed(f"screencapture failed: {said}" if said else "screencapture failed and said nothing")
+
+
 def chart_crop(hit: tuple[int, int], panes: list[Rect], window: Rect,
                image: tuple[int, int]) -> Rect:
     """The chart's pane, in the capture's own pixels.

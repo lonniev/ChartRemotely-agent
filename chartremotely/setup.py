@@ -294,7 +294,9 @@ def run(ask: Ask = input, say: Say = print, operator_url: str = OPERATOR_URL) ->
     out.step(4, total, "Permissions")
     probe = Path(tempfile.gettempdir()) / "chartremotely-permissions.json"
     granted = services.probe_permissions(request=True, out=probe)
+    asked = False
     while not (granted.get("accessibility") and granted.get("screen_recording")):
+        asked = True
         python = granted.get("python", "the Python that runs ChartRemotely")
         missing = [name for name, key in (("Accessibility", "accessibility"),
                                           ("Screen Recording", "screen_recording")) if not granted.get(key)]
@@ -302,8 +304,14 @@ def run(ask: Ask = input, say: Say = print, operator_url: str = OPERATOR_URL) ->
         out.say(python)
         pane = "Privacy_Accessibility" if not granted.get("accessibility") else "Privacy_ScreenCapture"
         subprocess.run(["open", f"x-apple.systempreferences:com.apple.preference.security?{pane}"], check=False)
-        out.ask("Turn it on in System Settings, then press Return… ")
+        # The list's + picker will not select a bare executable; Finder can drag it in.
+        subprocess.run(["open", "-R", python], check=False)
+        out.ask("Switch it on in that list (or drag it in from the Finder window), then press Return… ")
         granted = services.probe_permissions(request=False, out=probe)
+    if asked:
+        # A grant reaches a running process only when it restarts.
+        for command in ("serve", "relay"):
+            services.install(command)
     out.ok("Accessibility and Screen Recording are allowed.")
 
     # 5. Hearing: the speech model, and the display names a sentence may say.

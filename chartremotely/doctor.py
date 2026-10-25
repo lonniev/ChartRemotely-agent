@@ -7,6 +7,7 @@ check names the fix, not just the symptom.
 
 from __future__ import annotations
 
+import os
 import urllib.error
 import urllib.request
 
@@ -33,18 +34,45 @@ def _check_app() -> tuple[str, str]:
     return OK, f"thinkorswim running (pid {app.processIdentifier()})"
 
 
-def _check_accessibility() -> tuple[str, str]:
-    """A denied grant looks like an empty tree, not an error."""
-    from . import ax
-    try:
-        app = ax.running_app()
-    except ax.NotRunning:
-        return WARN, "skipped - thinkorswim is not running"
-    windows = ax.attr(ax.handle(app), "AXWindows")
-    if not windows:
-        return BAD, ("no accessibility access - grant it in System Settings > "
-                     "Privacy & Security > Accessibility. This cannot be automated.")
-    return OK, f"accessibility granted ({len(windows)} windows visible)"
+def permission_verdict(granted: dict) -> tuple[str, str]:
+    """What the services' own Python holds; see :func:`services.probe_permissions`."""
+    if not granted:
+        return BAD, "the permission check did not answer - run: chartremotely setup"
+    missing = [name for name, key in (("Accessibility", "accessibility"),
+                                      ("Screen Recording", "screen_recording")) if not granted.get(key)]
+    if missing:
+        python = granted.get("python", "the services' Python")
+        return BAD, (f"{' and '.join(missing)} off for {python} - "
+                     "run: chartremotely setup (a Python upgrade revokes both)")
+    return OK, "Accessibility and Screen Recording allowed for the services' Python"
+
+
+def _check_permissions() -> tuple[str, str]:
+    """Asked as a launchd job, as the services run: the Terminal's own grants say nothing about theirs."""
+    import tempfile
+    from pathlib import Path
+
+    from . import services
+    return permission_verdict(services.probe_permissions(
+        request=False, out=Path(tempfile.gettempdir()) / "chartremotely-permissions.json"))
+
+
+def service_verdict(running: dict[str, str | None], exists=os.path.exists) -> tuple[str, str]:
+    """Each service, and whether the Python it runs is still on disk."""
+    stopped = [name for name, python in running.items() if python is None]
+    orphaned = [name for name, python in running.items() if python and not exists(python)]
+    if orphaned:
+        kick = "; ".join(f"launchctl kickstart -k gui/$UID/com.chartremotely.{name}" for name in orphaned)
+        return BAD, (f"{', '.join(orphaned)} still on a Python that was upgraded away - "
+                     f"restart: {kick}, then run: chartremotely doctor")
+    if stopped:
+        return BAD, f"{', '.join(stopped)} not running - run: chartremotely setup"
+    return OK, "serve and relay running"
+
+
+def _check_services() -> tuple[str, str]:
+    from . import services
+    return service_verdict({name: services.running_python(name) for name in services.LABELS})
 
 
 def _check_controls() -> tuple[str, str]:
@@ -97,7 +125,8 @@ def _check_listener() -> tuple[str, str]:
 CHECKS = (
     ("PyObjC", _check_pyobjc),
     ("thinkorswim", _check_app),
-    ("Accessibility", _check_accessibility),
+    ("Services", _check_services),
+    ("Permissions", _check_permissions),
     ("Chart controls", _check_controls),
     ("Registry", _check_registry),
     ("Listener", _check_listener),
