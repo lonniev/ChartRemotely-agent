@@ -73,7 +73,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # the tags decide the next version
-      - uses: astral-sh/setup-uv@v10.3.2
+      - uses: astral-sh/setup-uv@v10.3.3
 
       - name: Decide the version
         id: version
