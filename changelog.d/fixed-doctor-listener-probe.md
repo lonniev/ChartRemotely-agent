@@ -1,0 +1,1 @@
+- `chartremotely doctor` checks the listener with a free table lookup. It used to send a paid chart read, which went through the operator, raised the chart over your other windows, and timed out after 5 seconds.
