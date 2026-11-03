@@ -75,7 +75,25 @@ def _check_services() -> tuple[str, str]:
     return service_verdict({name: services.running_python(name) for name in services.LABELS})
 
 
-def _check_controls() -> tuple[str, str]:
+def screen_locked() -> bool:
+    """True while the login session's screen is locked.
+
+    A locked screen hides every window from the accessibility layer, so the
+    chart's controls look missing when they are only out of reach.
+    """
+    import Quartz
+
+    session = Quartz.CGSessionCopyCurrentDictionary() or {}
+    return bool(session.get("CGSSessionScreenIsLocked"))
+
+
+LOCKED = (BAD, ("the screen is locked, so the chart controls cannot be read - "
+                "unlock this Mac; until then it cannot change the chart"))
+
+
+def _check_controls(locked=screen_locked) -> tuple[str, str]:
+    if locked():
+        return LOCKED
     from . import ax, symbol, timeframe
     cfg = config.load()
     try:
