@@ -81,3 +81,10 @@ def test_a_refused_token_is_named():
 
 def test_a_wrong_answer_fails():
     assert doctor.listener_verdict(8899, "t", post=lambda port, token: "ERR nope")[0] == doctor.BAD
+
+
+# -- chart controls: a locked screen is named, not mistaken for a missing chart -----------
+
+def test_a_locked_screen_is_named_before_looking_for_controls():
+    status, detail = doctor._check_controls(locked=lambda: True)
+    assert status == doctor.BAD and "locked" in detail and "unlock" in detail

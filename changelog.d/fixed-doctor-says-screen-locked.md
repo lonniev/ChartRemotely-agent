@@ -1,0 +1,1 @@
+- `chartremotely doctor` says when the screen is locked. It used to report "no symbol field found", which sent you looking for a missing chart.
