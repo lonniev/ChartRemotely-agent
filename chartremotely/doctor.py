@@ -106,20 +106,47 @@ def _check_registry() -> tuple[str, str]:
     return OK, f"{len(rows)} securities cached"
 
 
+#: A free lookup the listener answers from a table: no operator trip, no
+#: fare, and the chart stays where it is. "read" was all three.
+LISTENER_PROBE = b"scale half"
+LISTENER_SECONDS = 5
+
+
+def _post_probe(port: int, token: str) -> str:
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{port}/chart", data=LISTENER_PROBE,
+        headers={"X-Token": token}, method="POST")
+    with urllib.request.urlopen(request, timeout=LISTENER_SECONDS) as response:
+        return response.read().decode().strip()
+
+
+def listener_verdict(port: int, token: str, post=_post_probe) -> tuple[str, str]:
+    """Ask the listener a free table lookup and judge the answer."""
+    try:
+        reply = post(port, token)
+    except urllib.error.HTTPError as exc:
+        if exc.code == 403:
+            return BAD, f"listener on :{port} refused the token in config.json - restart it: chartremotely setup"
+        return BAD, f"listener on :{port} answered HTTP {exc.code}"
+    except urllib.error.URLError as exc:
+        if isinstance(exc.reason, TimeoutError):
+            return BAD, (f"listener on :{port} took over {LISTENER_SECONDS} s to answer a table lookup - "
+                         "restart it: chartremotely setup")
+        return WARN, f"nothing listening on :{port} - run: chartremotely serve"
+    except TimeoutError:
+        return BAD, (f"listener on :{port} took over {LISTENER_SECONDS} s to answer a table lookup - "
+                     "restart it: chartremotely setup")
+    if reply != "half":
+        return BAD, f"listener on :{port} answered {reply[:60]!r} to a table lookup"
+    return OK, f"listener answering on :{port}"
+
+
 def _check_listener() -> tuple[str, str]:
     cfg = config.load()
-    port = cfg["port"]
     token = cfg.get("token")
     if not token:
         return WARN, "no token yet - it is generated when the listener first starts"
-    request = urllib.request.Request(
-        f"http://127.0.0.1:{port}/chart", data=b"read",
-        headers={"X-Token": token}, method="POST")
-    try:
-        with urllib.request.urlopen(request, timeout=5) as response:
-            return OK, f"listener answering on :{port} - {response.read().decode().strip()}"
-    except urllib.error.URLError:
-        return WARN, f"nothing listening on :{port} - run: chartremotely serve"
+    return listener_verdict(cfg["port"], token)
 
 
 CHECKS = (

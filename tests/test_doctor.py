@@ -40,3 +40,44 @@ def test_both_running_on_a_live_python_is_ok():
 def test_launchctl_print_yields_the_pid_only_while_running():
     assert services.pid_in("com.chartremotely.relay = {\n\tstate = running\n\tpid = 12804\n}") == 12804
     assert services.pid_in("com.chartremotely.relay = {\n\tstate = not running\n}") is None
+
+
+# -- the listener: a free table lookup, never a paid chart read ----------------------------
+
+import urllib.error
+
+
+def test_the_listener_probe_is_a_free_lookup_never_read():
+    # server.LOOKUPS needs Quartz to import; the verb is pinned here instead.
+    assert doctor.LISTENER_PROBE.split()[0] == b"scale"
+
+
+def test_a_listener_that_answers_the_lookup_is_ok():
+    assert doctor.listener_verdict(8899, "t", post=lambda port, token: "half")[0] == doctor.OK
+
+
+def _raises(exc):
+    def post(port, token):
+        raise exc
+    return post
+
+
+def test_a_slow_listener_fails_and_says_so():
+    for exc in (TimeoutError("timed out"), urllib.error.URLError(TimeoutError("timed out"))):
+        status, detail = doctor.listener_verdict(8899, "t", post=_raises(exc))
+        assert status == doctor.BAD and "took over" in detail
+
+
+def test_nothing_listening_points_at_serve():
+    status, detail = doctor.listener_verdict(8899, "t", post=_raises(urllib.error.URLError(ConnectionRefusedError())))
+    assert status == doctor.WARN and "chartremotely serve" in detail
+
+
+def test_a_refused_token_is_named():
+    refused = urllib.error.HTTPError("http://127.0.0.1:8899/chart", 403, "Forbidden", {}, None)
+    status, detail = doctor.listener_verdict(8899, "t", post=_raises(refused))
+    assert status == doctor.BAD and "token" in detail
+
+
+def test_a_wrong_answer_fails():
+    assert doctor.listener_verdict(8899, "t", post=lambda port, token: "ERR nope")[0] == doctor.BAD
